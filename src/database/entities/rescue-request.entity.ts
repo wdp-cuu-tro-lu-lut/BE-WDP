@@ -1,0 +1,86 @@
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  JoinColumn,
+  OneToMany,
+  CreateDateColumn,
+  UpdateDateColumn,
+  Index,
+} from 'typeorm';
+import { Account } from './account.entity';
+import { RescueAssignment } from './rescue-assignment.entity';
+
+export enum RescueStatus {
+  NEW = 'NEW',
+  REVIEWED = 'REVIEWED',
+  ASSIGNED = 'ASSIGNED',
+  ACCEPTED = 'ACCEPTED',
+  IN_PROGRESS = 'IN_PROGRESS',
+  DONE = 'DONE',
+  CANCELED = 'CANCELED',
+  REJECTED = 'REJECTED',
+}
+
+export enum RescuePriority {
+  LOW = 'LOW',
+  MEDIUM = 'MEDIUM',
+  HIGH = 'HIGH',
+  CRITICAL = 'CRITICAL',
+}
+
+@Entity('rescue_requests')
+@Index(['creatorId'])
+@Index(['status'])
+@Index(['priority'])
+export class RescueRequest {
+  @PrimaryGeneratedColumn('uuid')
+  id!: string;
+
+  @Column({ type: 'uuid' })
+  creatorId!: string;
+
+  @Column({ type: 'text' })
+  address!: string;
+
+  @Column({ type: 'decimal', precision: 10, scale: 8, nullable: true })
+  latitude!: number;
+
+  @Column({ type: 'decimal', precision: 11, scale: 8, nullable: true })
+  longitude!: number;
+
+  @Column({
+    type: 'enum',
+    enum: RescuePriority,
+    default: RescuePriority.MEDIUM,
+  })
+  priority!: RescuePriority;
+
+  @Column({
+    type: 'enum',
+    enum: RescueStatus,
+    default: RescueStatus.NEW,
+  })
+  status!: RescueStatus;
+
+  @Column({ type: 'text', nullable: true })
+  note!: string;
+
+  @CreateDateColumn()
+  createdAt!: Date;
+
+  @UpdateDateColumn()
+  updatedAt!: Date;
+
+  @ManyToOne(() => Account, (account) => account.rescueRequests, {
+    onDelete: 'CASCADE',
+  })
+  @JoinColumn({ name: 'creatorId' })
+  creator!: Account;
+
+  @OneToMany(() => RescueAssignment, (ra) => ra.rescueRequest, {
+    cascade: true,
+  })
+  assignments!: RescueAssignment[];
+}

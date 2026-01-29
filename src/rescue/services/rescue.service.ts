@@ -1,0 +1,272 @@
+import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, In } from 'typeorm';
+import {
+  RescueRequest,
+  RescueAssignment,
+  RescueStatus,
+  AssignmentStatus,
+  Team,
+} from '@/database/entities';
+import {
+  CreateRescueRequestDto,
+  ReviewRescueRequestDto,
+  CreateRescueAssignmentDto,
+  RespondAssignmentDto,
+  UpdateProgressDto,
+  ListRescueRequestsQueryDto,
+  ListAssignmentsQueryDto,
+} from '@/rescue/dto';
+import {
+  ResourceNotFoundException,
+  ForbiddenException,
+  ConflictException,
+} from '@/common/exceptions';
+import {
+  RescueStatusTransition,
+  AssignmentStatusTransition,
+} from '@/rescue/helpers';
+
+@Injectable()
+export class RescueService {
+  constructor(
+    @InjectRepository(RescueRequest)
+    private rescueRepository: Repository<RescueRequest>,
+    @InjectRepository(RescueAssignment)
+    private assignmentRepository: Repository<RescueAssignment>,
+    @InjectRepository(Team)
+    private teamRepository: Repository<Team>,
+  ) {}
+
+  async createRequest(creatorId: string, createDto: CreateRescueRequestDto) {
+    const rescue = this.rescueRepository.create({
+      creatorId,
+      ...createDto,
+    });
+    return this.rescueRepository.save(rescue);
+  }
+
+  async getRequest(id: string) {
+    const rescue = await this.rescueRepository.findOne({
+      where: { id },
+      relations: ['assignments', 'assignments.team'],
+    });
+    if (!rescue) {
+      throw new ResourceNotFoundException('Rescue request', id);
+    }
+    return rescue;
+  }
+
+  async listMyRequests(creatorId: string, page = 1, limit = 20) {
+    const qb = this.rescueRepository
+      .createQueryBuilder('rescue')
+      .leftJoinAndSelect('rescue.assignments', 'assignments')
+      .where('rescue.creatorId = :creatorId', { creatorId });
+
+    const total = await qb.getCount();
+    const skip = (page - 1) * limit;
+    const requests = await qb.skip(skip).take(limit).getMany();
+
+    return {
+      data: requests,
+      meta: { total, page, limit, pages: Math.ceil(total / limit) },
+    };
+  }
+
+  async listRequests(query: ListRescueRequestsQueryDto) {
+    const {
+      status,
+      priority,
+      q,
+      from,
+      to,
+      page = 1,
+      limit = 20,
+      sortBy = 'createdAt',
+      order = 'DESC',
+    } = query;
+
+    let qb = this.rescueRepository.createQueryBuilder('rescue');
+
+    if (status) {
+      qb = qb.where('rescue.status = :status', { status });
+    }
+    if (priority) {
+      qb = qb.andWhere('rescue.priority = :priority', { priority });
+    }
+    if (q) {
+      qb = qb.andWhere('rescue.address LIKE :q', { q: `%${q}%` });
+    }
+    if (from) {
+      qb = qb.andWhere('rescue.createdAt >= :from', {
+        from: new Date(from),
+      });
+    }
+    if (to) {
+      qb = qb.andWhere('rescue.createdAt <= :to', { to: new Date(to) });
+    }
+
+    const total = await qb.getCount();
+    const skip = (page - 1) * limit;
+    const requests = await qb
+      .orderBy(`rescue.${sortBy}`, order)
+      .skip(skip)
+      .take(limit)
+      .getMany();
+
+    return {
+      data: requests,
+      meta: { total, page, limit, pages: Math.ceil(total / limit) },
+    };
+  }
+
+  async reviewRequest(id: string, reviewDto: ReviewRescueRequestDto) {
+    const rescue = await this.getRequest(id);
+
+    if (!RescueStatusTransition.isValidTransition(rescue.status, reviewDto.status)) {
+      throw new ConflictException(
+        `Cannot transition from ${rescue.status} to ${reviewDto.status}`,
+      );
+    }
+
+    rescue.status = reviewDto.status;
+    if (reviewDto.priority !== undefined) rescue.priority = reviewDto.priority;
+    if (reviewDto.note !== undefined) rescue.note = reviewDto.note;
+
+    return this.rescueRepository.save(rescue);
+  }
+
+  async assignTeams(id: string, createDto: CreateRescueAssignmentDto) {
+    const rescue = await this.getRequest(id);
+
+    if (rescue.status !== RescueStatus.REVIEWED) {
+      throw new ConflictException('Can only assign reviewed requests');
+    }
+
+    // Create assignments
+    const assignments = createDto.teamIds.map(teamId =>
+      this.assignmentRepository.create({
+        rescueRequestId: id,
+        teamId,
+      }),
+    );
+
+    await this.assignmentRepository.save(assignments);
+
+    // Update request status
+    await this.rescueRepository.update(id, { status: RescueStatus.ASSIGNED });
+
+    return this.getRequest(id);
+  }
+
+  async getTeamAssignments(accountId: string, query: ListAssignmentsQueryDto) {
+    // Find team by accountId
+    const team = await this.teamRepository.findOne({ where: { accountId } });
+    if (!team) {
+      return { data: [], meta: { total: 0, page: 1, limit: 20, pages: 0 } };
+    }
+
+    const { status, page = 1, limit = 20 } = query;
+
+    let qb = this.assignmentRepository
+      .createQueryBuilder('assignment')
+      .leftJoinAndSelect('assignment.rescueRequest', 'rescue')
+      .where('assignment.teamId = :teamId', { teamId: team.id });
+
+    if (status) {
+      qb = qb.andWhere('assignment.status = :status', { status });
+    }
+
+    const total = await qb.getCount();
+    const skip = (page - 1) * limit;
+    const assignments = await qb.skip(skip).take(limit).getMany();
+
+    return {
+      data: assignments,
+      meta: { total, page, limit, pages: Math.ceil(total / limit) },
+    };
+  }
+
+  async respondAssignment(assignmentId: string, respondDto: RespondAssignmentDto) {
+    const assignment = await this.assignmentRepository.findOne({
+      where: { id: assignmentId },
+      relations: ['rescueRequest', 'rescueRequest.assignments'],
+    });
+
+    if (!assignment) {
+      throw new ResourceNotFoundException('Assignment', assignmentId);
+    }
+
+    if (assignment.status !== AssignmentStatus.SENT) {
+      throw new ConflictException('Can only respond to SENT assignments');
+    }
+
+    assignment.status = respondDto.status;
+    assignment.respondedAt = new Date();
+
+    if (respondDto.status === AssignmentStatus.ACCEPTED) {
+      // Cancel other pending assignments
+      const otherAssignments = assignment.rescueRequest.assignments.filter(
+        a => a.id !== assignmentId && a.status === AssignmentStatus.SENT,
+      );
+
+      for (const other of otherAssignments) {
+        other.status = AssignmentStatus.CANCELED;
+      }
+
+      await this.assignmentRepository.save(otherAssignments);
+
+      // Update rescue status
+      assignment.rescueRequest.status = RescueStatus.ACCEPTED;
+      await this.rescueRepository.save(assignment.rescueRequest);
+    }
+
+    return this.assignmentRepository.save(assignment);
+  }
+
+  async updateProgress(assignmentId: string, updateDto: UpdateProgressDto) {
+    const assignment = await this.assignmentRepository.findOne({
+      where: { id: assignmentId },
+      relations: ['rescueRequest'],
+    });
+
+    if (!assignment) {
+      throw new ResourceNotFoundException('Assignment', assignmentId);
+    }
+
+    if (assignment.status !== AssignmentStatus.ACCEPTED) {
+      throw new ConflictException('Can only update progress on accepted assignments');
+    }
+
+    if (!RescueStatusTransition.isValidTransition(assignment.rescueRequest.status, updateDto.status)) {
+      throw new ConflictException(
+        `Cannot transition to ${updateDto.status}`,
+      );
+    }
+
+    assignment.rescueRequest.status = updateDto.status;
+    if (updateDto.progressNote) {
+      assignment.progressNote = updateDto.progressNote;
+    }
+
+    await this.rescueRepository.save(assignment.rescueRequest);
+    return this.assignmentRepository.save(assignment);
+  }
+
+  async cancelRequest(id: string, creatorId: string) {
+    const rescue = await this.getRequest(id);
+
+    if (rescue.creatorId !== creatorId) {
+      throw new ForbiddenException('Can only cancel own requests');
+    }
+
+    if (!RescueStatusTransition.canUserCancel(rescue.status)) {
+      throw new ConflictException(
+        `Cannot cancel request in ${rescue.status} status`,
+      );
+    }
+
+    rescue.status = RescueStatus.CANCELED;
+    return this.rescueRepository.save(rescue);
+  }
+}
