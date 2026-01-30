@@ -16,7 +16,7 @@ import * as path from 'path';
         database: configService.get('DB_DATABASE', 'rescue_relief_db'),
         entities: [path.join(__dirname, '../**/*.entity{.ts,.js}')],
         migrations: [path.join(__dirname, '../migrations/*{.ts,.js}')],
-        synchronize: true,
+        synchronize: false,
         logging: configService.get('NODE_ENV') === 'development',
         charset: 'utf8mb4',
         collation: 'utf8mb4_unicode_ci',
