@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, In } from 'typeorm';
 import {
+  Category,
   WarehouseStock,
   WarehouseReceipt,
   WarehouseReceiptItem,
@@ -41,11 +42,14 @@ export class WarehouseService {
     private donationRepository: Repository<Donation>,
     @InjectRepository(DonationItem)
     private donationItemRepository: Repository<DonationItem>,
+    @InjectRepository(Category)
+    private categoryRepository: Repository<Category>,
     private dataSource: DataSource,
   ) {}
 
   async listStocks(page = 1, limit = 20) {
-    const qb = this.stockRepository.createQueryBuilder('stock');
+    const qb = this.stockRepository.createQueryBuilder('stock')
+      .leftJoinAndSelect('stock.category', 'category');
     const total = await qb.getCount();
     const skip = (page - 1) * limit;
     const stocks = await qb.skip(skip).take(limit).getMany();
@@ -87,7 +91,7 @@ export class WarehouseService {
         // Create receipt item
         const receiptItem = queryRunner.manager.create(WarehouseReceiptItem, {
           receiptId: savedReceipt.id,
-          category: item.category,
+          categoryId: item.categoryId,
           condition: item.condition,
           quantity: item.quantity,
         });
@@ -96,14 +100,14 @@ export class WarehouseService {
         // Update or create stock
         let stock = await queryRunner.manager.findOne(WarehouseStock, {
           where: {
-            category: item.category,
+            categoryId: item.categoryId,
             condition: item.condition,
           },
         });
 
         if (!stock) {
           stock = queryRunner.manager.create(WarehouseStock, {
-            category: item.category,
+            categoryId: item.categoryId,
             condition: item.condition,
             quantity: 0,
           });
@@ -143,7 +147,8 @@ export class WarehouseService {
   async listReceipts(page = 1, limit = 20) {
     const qb = this.receiptRepository
       .createQueryBuilder('receipt')
-      .leftJoinAndSelect('receipt.items', 'items');
+      .leftJoinAndSelect('receipt.items', 'items')
+      .leftJoinAndSelect('items.category', 'category');
 
     const total = await qb.getCount();
     const skip = (page - 1) * limit;
@@ -164,17 +169,30 @@ export class WarehouseService {
     await queryRunner.startTransaction();
 
     try {
+      // Pre-fetch categories
+      const categoryNames = [
+        ...new Set(createDto.items.map((item) => item.category)),
+      ];
+      const categories = await queryRunner.manager.find(Category, {
+        where: { name: In(categoryNames) },
+      });
+      const categoryMap = new Map(categories.map((c) => [c.name, c]));
+
       // Lock and check stock
       for (const item of createDto.items) {
-        const stock = await queryRunner.manager.findOne(
-          WarehouseStock,
-          {
-            where: {
-              category: item.category,
-              condition: item.condition,
-            },
+        const categoryEntity = categoryMap.get(item.category);
+        if (!categoryEntity) {
+          throw new ConflictException(
+            `Insufficient stock for ${item.category} (${item.condition}) - Category not found`,
+          );
+        }
+
+        const stock = await queryRunner.manager.findOne(WarehouseStock, {
+          where: {
+            categoryId: categoryEntity.id,
+            condition: item.condition,
           },
-        );
+        });
 
         if (!stock || stock.quantity < item.quantity) {
           throw new ConflictException(
@@ -193,6 +211,9 @@ export class WarehouseService {
 
       // Create allocation items & deduct stock
       for (const item of createDto.items) {
+        const categoryEntity = categoryMap.get(item.category);
+        if (!categoryEntity) continue;
+
         const allocationItem = queryRunner.manager.create(AllocationItem, {
           allocationId: savedAllocation.id,
           category: item.category,
@@ -204,7 +225,7 @@ export class WarehouseService {
         // Deduct from stock
         const stock = await queryRunner.manager.findOne(WarehouseStock, {
           where: {
-            category: item.category,
+            categoryId: categoryEntity.id,
             condition: item.condition,
           },
         });

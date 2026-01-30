@@ -77,4 +77,9 @@ export class TeamsService {
     Object.assign(team, updateTeamDto);
     return this.teamRepository.save(team);
   }
+
+  async deleteTeam(id: string) {
+    const team = await this.getTeam(id);
+    return this.teamRepository.softRemove(team);
+  }
 }

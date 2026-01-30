@@ -1,4 +1,4 @@
-import { IsOptional, IsEnum, IsInt, IsArray, ValidateNested } from 'class-validator';
+import { IsOptional, IsEnum, IsInt, IsArray, ValidateNested, IsString, IsNotEmpty } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 import { DonationStatus, ItemCondition } from '@/database/entities';
@@ -8,6 +8,8 @@ export class CreateDonationItemDto {
     example: 'Quần áo',
     description: 'Item category',
   })
+  @IsString()
+  @IsNotEmpty()
   category!: string;
 
   @ApiProperty({
@@ -169,4 +171,74 @@ export class ListDonationsQueryDto {
   })
   @IsOptional()
   order: 'ASC' | 'DESC' = 'DESC';
+}
+
+export class BulkFilterDto {
+  @ApiProperty({
+    example: '550e8400-e29b-41d4-a716-446655440000',
+    description: 'Filter by event ID',
+    required: false,
+  })
+  @IsOptional()
+  eventId?: string;
+
+  @ApiProperty({
+    example: '550e8400-e29b-41d4-a716-446655440000',
+    description: 'Filter by creator ID',
+    required: false,
+  })
+  @IsOptional()
+  creatorId?: string;
+
+  @ApiProperty({
+    example: '2026-01-01',
+    description: 'From date (YYYY-MM-DD)',
+    required: false,
+  })
+  @IsOptional()
+  from?: string;
+
+  @ApiProperty({
+    example: '2026-01-31',
+    description: 'To date (YYYY-MM-DD)',
+    required: false,
+  })
+  @IsOptional()
+  to?: string;
+}
+
+export class BulkApproveDonationDto {
+  @ApiProperty({
+    description: 'List of donation IDs to approve',
+    example: ['uuid-1', 'uuid-2'],
+    required: false,
+  })
+  @IsOptional()
+  @IsArray()
+  ids?: string[];
+
+  @ApiProperty({
+    example: 'Approved via bulk action',
+    description: 'Approval note',
+    required: false,
+  })
+  @IsOptional()
+  note?: string;
+}
+
+export class BulkRejectDonationDto {
+  @ApiProperty({
+    description: 'List of donation IDs to reject',
+    example: ['uuid-1', 'uuid-2'],
+    required: false,
+  })
+  @IsOptional()
+  @IsArray()
+  ids?: string[];
+
+  @ApiProperty({
+    example: 'Rejected via bulk action',
+    description: 'Rejection reason',
+  })
+  reason!: string;
 }

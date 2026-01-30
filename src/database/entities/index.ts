@@ -8,6 +8,7 @@ export * from './rescue-request.entity';
 export * from './rescue-assignment.entity';
 export * from './donation.entity';
 export { DonationItem, ItemCondition } from './donation-item.entity';
+export * from './category.entity';
 export * from './warehouse-receipt.entity';
 export { WarehouseReceiptItem } from './warehouse-receipt-item.entity';
 export * from './warehouse-stock.entity';

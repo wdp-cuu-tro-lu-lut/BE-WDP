@@ -9,6 +9,7 @@ import {
   Index,
 } from 'typeorm';
 import { WarehouseReceipt } from './warehouse-receipt.entity';
+import { Category } from './category.entity';
 
 export enum ItemCondition {
   EXCELLENT = 'EXCELLENT',
@@ -26,8 +27,12 @@ export class WarehouseReceiptItem {
   @Column({ type: 'uuid' })
   receiptId!: string;
 
-  @Column({ type: 'varchar', length: 100 })
-  category!: string;
+  @Column({ type: 'uuid' })
+  categoryId!: string;
+
+  @ManyToOne(() => Category)
+  @JoinColumn({ name: 'categoryId' })
+  category!: Category;
 
   @Column({
     type: 'enum',

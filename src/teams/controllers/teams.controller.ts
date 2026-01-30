@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Body,
   Param,
   Query,
@@ -51,5 +52,11 @@ export class TeamsController {
     @Body() updateTeamDto: UpdateTeamDto,
   ) {
     return this.teamsService.updateTeam(id, updateTeamDto);
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: 'Delete team' })
+  async deleteTeam(@Param('id') id: string) {
+    return this.teamsService.deleteTeam(id);
   }
 }

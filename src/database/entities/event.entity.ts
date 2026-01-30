@@ -4,6 +4,7 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
+  DeleteDateColumn,
   OneToMany,
   Index,
 } from 'typeorm';
@@ -62,6 +63,9 @@ export class Event {
 
   @UpdateDateColumn()
   updatedAt!: Date;
+
+  @DeleteDateColumn()
+  deletedAt?: Date;
 
   @OneToMany(() => VolunteerRegistration, (vr) => vr.event, {
     cascade: true,

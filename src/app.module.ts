@@ -11,6 +11,7 @@ import { RescueModule } from '@/rescue/rescue.module';
 import { DonationsModule } from '@/donations/donations.module';
 import { WarehouseModule } from '@/warehouse/warehouse.module';
 import { FilesModule } from '@/files/files.module';
+import { CategoriesModule } from './categories/categories.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { FilesModule } from '@/files/files.module';
     DonationsModule,
     WarehouseModule,
     FilesModule,
+    CategoriesModule,
   ],
 })
 export class AppModule {}

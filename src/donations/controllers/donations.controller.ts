@@ -7,6 +7,7 @@ import {
   Param,
   Query,
   UseGuards,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard, RolesGuard, Roles, CurrentUser } from '@/common';
@@ -17,6 +18,9 @@ import {
   ApproveDonationDto,
   RejectDonationDto,
   ListDonationsQueryDto,
+  BulkApproveDonationDto,
+  BulkRejectDonationDto,
+  BulkFilterDto,
 } from '@/donations/dto';
 
 @Controller('events/:eventId/donations')
@@ -30,7 +34,7 @@ export class DonationsController {
   @Roles(AccountRole.USER)
   @ApiOperation({ summary: 'Create donation (USER)' })
   async createDonation(
-    @Param('eventId') eventId: string,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
     @CurrentUser() user: any,
     @Body() createDto: CreateDonationDto,
   ) {
@@ -65,6 +69,27 @@ export class DonationsController {
 @Roles(AccountRole.ADMIN, AccountRole.STAFF)
 export class AdminDonationsController {
   constructor(private readonly donationsService: DonationsService) {}
+
+
+  @Patch('bulk-approve')
+  @Roles(AccountRole.ADMIN, AccountRole.STAFF)
+  @ApiOperation({ summary: 'Bulk approve donations' })
+  async bulkApprove(
+    @Body() dto: BulkApproveDonationDto,
+    @Query() filter: BulkFilterDto,
+  ) {
+    return this.donationsService.bulkApprove(dto, filter);
+  }
+
+  @Patch('bulk-reject')
+  @Roles(AccountRole.ADMIN, AccountRole.STAFF)
+  @ApiOperation({ summary: 'Bulk reject donations' })
+  async bulkReject(
+    @Body() dto: BulkRejectDonationDto,
+    @Query() filter: BulkFilterDto,
+  ) {
+    return this.donationsService.bulkReject(dto, filter);
+  }
 
   @Get()
   @ApiOperation({ summary: 'List donations (ADMIN/STAFF)' })

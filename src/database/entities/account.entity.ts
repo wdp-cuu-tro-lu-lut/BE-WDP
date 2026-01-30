@@ -4,6 +4,7 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
+  DeleteDateColumn,
   OneToOne,
   OneToMany,
   Index,
@@ -55,6 +56,9 @@ export class Account {
 
   @UpdateDateColumn()
   updatedAt!: Date;
+
+  @DeleteDateColumn()
+  deletedAt?: Date;
 
   @OneToOne(() => Profile, (profile) => profile.account, {
     cascade: true,

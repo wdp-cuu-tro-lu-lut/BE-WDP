@@ -3,6 +3,8 @@ import {
   PrimaryGeneratedColumn,
   Column,
   OneToMany,
+  ManyToOne,
+  JoinColumn,
   CreateDateColumn,
   UpdateDateColumn,
   Unique,
@@ -10,6 +12,7 @@ import {
 } from 'typeorm';
 import { WarehouseReceiptItem } from './warehouse-receipt-item.entity';
 import { AllocationItem } from './allocation-item.entity';
+import { Category } from './category.entity';
 
 export enum ItemCondition {
   EXCELLENT = 'EXCELLENT',
@@ -19,14 +22,18 @@ export enum ItemCondition {
 }
 
 @Entity('warehouse_stocks')
-@Unique('unique_category_condition', ['category', 'condition'])
-@Index(['category'])
+@Unique('unique_category_condition', ['categoryId', 'condition'])
+@Index(['categoryId'])
 export class WarehouseStock {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column({ type: 'varchar', length: 100 })
-  category!: string;
+  @Column({ type: 'uuid' })
+  categoryId!: string;
+
+  @ManyToOne(() => Category)
+  @JoinColumn({ name: 'categoryId' })
+  category!: Category;
 
   @Column({
     type: 'enum',

@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Body,
   Param,
   Query,
@@ -56,6 +57,15 @@ export class EventsController {
     @Body() updateEventDto: UpdateEventDto,
   ) {
     return this.eventsService.updateEvent(id, updateEventDto);
+  }
+
+  @Delete(':id')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(AccountRole.ADMIN)
+  @ApiOperation({ summary: 'Delete event (ADMIN)' })
+  async deleteEvent(@Param('id') id: string) {
+    return this.eventsService.deleteEvent(id);
   }
 
   @Patch(':id/status')

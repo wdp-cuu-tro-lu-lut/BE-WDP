@@ -1,12 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { Donation, DonationItem, DonationStatus } from '@/database/entities';
+import { Repository, In } from 'typeorm';
+import { Donation, DonationItem, DonationStatus, Category } from '@/database/entities';
 import {
   CreateDonationDto,
   ApproveDonationDto,
   RejectDonationDto,
   ListDonationsQueryDto,
+  BulkApproveDonationDto,
+  BulkRejectDonationDto,
+  BulkFilterDto,
 } from '@/donations/dto';
 import {
   ResourceNotFoundException,
@@ -21,6 +24,8 @@ export class DonationsService {
     private donationRepository: Repository<Donation>,
     @InjectRepository(DonationItem)
     private donationItemRepository: Repository<DonationItem>,
+    @InjectRepository(Category)
+    private categoryRepository: Repository<Category>,
   ) {}
 
   async createDonation(eventId: string, creatorId: string, createDto: CreateDonationDto) {
@@ -33,12 +38,25 @@ export class DonationsService {
     const saved = await this.donationRepository.save(donation);
 
     // Create items
-    const items = createDto.items.map(item =>
-      this.donationItemRepository.create({
+    const items: DonationItem[] = [];
+    for (const itemDto of createDto.items) {
+      let category = await this.categoryRepository.findOne({ where: { name: itemDto.category } });
+      
+      if (!category) {
+        category = this.categoryRepository.create({ name: itemDto.category });
+        await this.categoryRepository.save(category);
+      }
+
+      const item = this.donationItemRepository.create({
         donationId: saved.id,
-        ...item,
-      }),
-    );
+        categoryId: category.id,
+        quantity: itemDto.quantity,
+        condition: itemDto.condition,
+        imageUrls: itemDto.imageUrls,
+        note: itemDto.note,
+      });
+      items.push(item);
+    }
 
     await this.donationItemRepository.save(items);
 
@@ -48,7 +66,7 @@ export class DonationsService {
   async getDonation(id: string) {
     const donation = await this.donationRepository.findOne({
       where: { id },
-      relations: ['items', 'creator', 'creator.profile'],
+      relations: ['items', 'items.category', 'creator', 'creator.profile'],
     });
 
     if (!donation) {
@@ -62,6 +80,7 @@ export class DonationsService {
     const qb = this.donationRepository
       .createQueryBuilder('donation')
       .leftJoinAndSelect('donation.items', 'items')
+      .leftJoinAndSelect('items.category', 'category')
       .where('donation.creatorId = :creatorId', { creatorId });
 
     const total = await qb.getCount();
@@ -86,7 +105,9 @@ export class DonationsService {
       order = 'DESC',
     } = query;
 
-    let qb = this.donationRepository.createQueryBuilder('donation').leftJoinAndSelect('donation.items', 'items');
+    let qb = this.donationRepository.createQueryBuilder('donation')
+      .leftJoinAndSelect('donation.items', 'items')
+      .leftJoinAndSelect('items.category', 'category');
 
     if (status) {
       qb = qb.where('donation.status = :status', { status });
@@ -141,4 +162,83 @@ export class DonationsService {
     donation.status = DonationStatus.REJECTED;
     return this.donationRepository.save(donation);
   }
+
+  async bulkApprove(dto: BulkApproveDonationDto, filter?: BulkFilterDto) {
+    let idsToUpdate: string[] = [];
+
+    if (dto.ids && dto.ids.length > 0) {
+      idsToUpdate = dto.ids;
+    } else if (filter) {
+      const qb = this.donationRepository.createQueryBuilder('donation')
+        .select('donation.id')
+        .where('donation.status = :status', { status: DonationStatus.SUBMITTED });
+      
+      if (filter.eventId) {
+        qb.andWhere('donation.eventId = :eventId', { eventId: filter.eventId });
+      }
+      if (filter.creatorId) {
+        qb.andWhere('donation.creatorId = :creatorId', { creatorId: filter.creatorId });
+      }
+      if (filter.from) {
+        qb.andWhere('donation.createdAt >= :from', { from: new Date(filter.from) });
+      }
+      if (filter.to) {
+        qb.andWhere('donation.createdAt <= :to', { to: new Date(filter.to) });
+      }
+
+      const donations = await qb.getMany();
+      idsToUpdate = donations.map(d => d.id);
+    }
+
+    if (idsToUpdate.length === 0) {
+      return { count: 0, ids: [] };
+    }
+
+    const result = await this.donationRepository.update(
+      { id: In(idsToUpdate), status: DonationStatus.SUBMITTED },
+      { status: DonationStatus.APPROVED }
+    );
+
+    return { count: result.affected || 0, ids: idsToUpdate };
+  }
+
+  async bulkReject(dto: BulkRejectDonationDto, filter?: BulkFilterDto) {
+    let idsToUpdate: string[] = [];
+
+    if (dto.ids && dto.ids.length > 0) {
+      idsToUpdate = dto.ids;
+    } else if (filter) {
+      const qb = this.donationRepository.createQueryBuilder('donation')
+        .select('donation.id')
+        .where('donation.status = :status', { status: DonationStatus.SUBMITTED });
+      
+      if (filter.eventId) {
+        qb.andWhere('donation.eventId = :eventId', { eventId: filter.eventId });
+      }
+      if (filter.creatorId) {
+        qb.andWhere('donation.creatorId = :creatorId', { creatorId: filter.creatorId });
+      }
+      if (filter.from) {
+        qb.andWhere('donation.createdAt >= :from', { from: new Date(filter.from) });
+      }
+      if (filter.to) {
+        qb.andWhere('donation.createdAt <= :to', { to: new Date(filter.to) });
+      }
+
+      const donations = await qb.getMany();
+      idsToUpdate = donations.map(d => d.id);
+    }
+
+    if (idsToUpdate.length === 0) {
+      return { count: 0, ids: [] };
+    }
+
+    const result = await this.donationRepository.update(
+      { id: In(idsToUpdate), status: DonationStatus.SUBMITTED },
+      { status: DonationStatus.REJECTED }
+    );
+
+    return { count: result.affected || 0, ids: idsToUpdate };
+  }
 }
+

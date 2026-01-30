@@ -4,6 +4,7 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
+  DeleteDateColumn,
   OneToMany,
   Index,
 } from 'typeorm';
@@ -36,7 +37,8 @@ export class Team {
 
   @UpdateDateColumn()
   updatedAt!: Date;
-
+  @DeleteDateColumn()
+  deletedAt?: Date;
   @OneToMany(() => RescueAssignment, (ra) => ra.team)
   assignments!: RescueAssignment[];
 

@@ -8,6 +8,7 @@ import {
   AllocationItem,
   Donation,
   DonationItem,
+  Category,
 } from '@/database/entities';
 import { WarehouseService } from '@/warehouse/services';
 import { WarehouseController } from '@/warehouse/controllers';
@@ -22,6 +23,7 @@ import { WarehouseController } from '@/warehouse/controllers';
       AllocationItem,
       Donation,
       DonationItem,
+      Category,
     ]),
   ],
   providers: [WarehouseService],

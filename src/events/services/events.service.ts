@@ -95,6 +95,11 @@ export class EventsService {
     return this.eventRepository.save(event);
   }
 
+  async deleteEvent(id: string) {
+    const event = await this.getEvent(id);
+    return this.eventRepository.softRemove(event);
+  }
+
   async registerVolunteer(
     eventId: string,
     accountId: string,
