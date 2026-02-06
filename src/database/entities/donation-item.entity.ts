@@ -9,6 +9,7 @@ import {
   Index,
 } from 'typeorm';
 import { Donation } from './donation.entity';
+import { DonationStatus } from './donation-status.enum';
 import { Category } from './category.entity';
 
 export enum ItemCondition {
@@ -29,6 +30,22 @@ export class DonationItem {
 
   @Column({ type: 'uuid', nullable: true })
   categoryId!: string;
+
+  @Column({ type: 'text', nullable: true })
+  name!: string;
+
+  @Column({ type: 'text', nullable: true })
+  unit!: string;
+
+  @Column({ type: 'timestamp', nullable: true })
+  expirationDate!: Date;
+
+  @Column({
+    type: 'enum',
+    enum: DonationStatus,
+    default: DonationStatus.SUBMITTED,
+  })
+  status!: DonationStatus;
 
   @ManyToOne(() => Category, (category) => category.items)
   @JoinColumn({ name: 'categoryId' })

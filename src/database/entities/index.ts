@@ -7,6 +7,7 @@ export * from './volunteer-registration.entity';
 export * from './rescue-request.entity';
 export * from './rescue-assignment.entity';
 export * from './donation.entity';
+export * from './donation-status.enum';
 export { DonationItem, ItemCondition } from './donation-item.entity';
 export * from './category.entity';
 export * from './warehouse-receipt.entity';

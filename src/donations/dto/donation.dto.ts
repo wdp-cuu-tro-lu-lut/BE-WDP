@@ -1,9 +1,35 @@
-import { IsOptional, IsEnum, IsInt, IsArray, ValidateNested, IsString, IsNotEmpty } from 'class-validator';
+import { IsOptional, IsEnum, IsInt, IsArray, ValidateNested, IsString, IsNotEmpty, IsDateString } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
 import { DonationStatus, ItemCondition } from '@/database/entities';
 
 export class CreateDonationItemDto {
+  @ApiProperty({
+    example: 'Gạo ST25',
+    description: 'Item name',
+  })
+  @IsString()
+  @IsNotEmpty()
+  name!: string;
+
+  @ApiProperty({
+    example: 'kg',
+    description: 'Unit of measure',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  unit?: string;
+
+  @ApiProperty({
+    example: '2025-12-31',
+    description: 'Expiration date',
+    required: false,
+  })
+  @IsOptional()
+  @IsDateString()
+  expirationDate?: string;
+
   @ApiProperty({
     example: 'Quần áo',
     description: 'Item category',
@@ -56,18 +82,24 @@ export class CreateDonationDto {
     isArray: true,
     example: [
       {
+        name: 'Áo phông cotton',
+        unit: 'cái',
+        expirationDate: '2026-12-31',
         category: 'Quần áo',
         quantity: 50,
         condition: 'GOOD',
         imageUrls: ['https://example.com/item1.jpg'],
-        note: 'Quần áo mới',
+        note: 'Quần áo mới, chưa qua sử dụng',
       },
       {
+        name: 'Mì gói Hảo Hảo',
+        unit: 'thùng',
+        expirationDate: '2026-12-31',
         category: 'Thực phẩm',
-        quantity: 100,
+        quantity: 10,
         condition: 'EXCELLENT',
         imageUrls: [],
-        note: 'Mì tôm',
+        note: 'Mỗi thùng 30 gói',
       },
     ],
     description: 'List of items to donate',

@@ -5,7 +5,6 @@
     "dist",
     "test",
     "**/*spec.ts",
-    "src/scripts/**/*",
     "ormconfig.ts"
   ]
 }

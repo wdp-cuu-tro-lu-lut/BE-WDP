@@ -50,6 +50,9 @@ export class DonationsService {
       const item = this.donationItemRepository.create({
         donationId: saved.id,
         categoryId: category.id,
+        name: itemDto.name,
+        unit: itemDto.unit,
+        expirationDate: itemDto.expirationDate ? new Date(itemDto.expirationDate) : undefined,
         quantity: itemDto.quantity,
         condition: itemDto.condition,
         imageUrls: itemDto.imageUrls,
@@ -81,6 +84,8 @@ export class DonationsService {
       .createQueryBuilder('donation')
       .leftJoinAndSelect('donation.items', 'items')
       .leftJoinAndSelect('items.category', 'category')
+      .leftJoinAndSelect('donation.creator', 'creator')
+      .leftJoinAndSelect('creator.profile', 'creatorProfile')
       .where('donation.creatorId = :creatorId', { creatorId });
 
     const total = await qb.getCount();
@@ -107,7 +112,9 @@ export class DonationsService {
 
     let qb = this.donationRepository.createQueryBuilder('donation')
       .leftJoinAndSelect('donation.items', 'items')
-      .leftJoinAndSelect('items.category', 'category');
+      .leftJoinAndSelect('items.category', 'category')
+      .leftJoinAndSelect('donation.creator', 'creator')
+      .leftJoinAndSelect('creator.profile', 'creatorProfile');
 
     if (status) {
       qb = qb.where('donation.status = :status', { status });

@@ -15,15 +15,7 @@ import { Event } from './event.entity';
 import { DonationItem } from './donation-item.entity';
 import { WarehouseReceipt } from './warehouse-receipt.entity';
 
-export enum DonationStatus {
-  SUBMITTED = 'SUBMITTED',
-  APPROVED = 'APPROVED',
-  REJECTED = 'REJECTED',
-  RECEIVED = 'RECEIVED',
-  ALLOCATED = 'ALLOCATED',
-  DISPATCHED = 'DISPATCHED',
-  DELIVERED = 'DELIVERED',
-}
+import { DonationStatus } from './donation-status.enum';
 
 @Entity('donations')
 @Index(['creatorId'])
