@@ -23,29 +23,32 @@ import {
 @ApiTags('Admin / Teams')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(AccountRole.ADMIN)
 export class TeamsController {
   constructor(private readonly teamsService: TeamsService) {}
 
   @Post()
+  @Roles(AccountRole.ADMIN)
   @ApiOperation({ summary: 'Create team' })
   async createTeam(@Body() createTeamDto: CreateTeamDto) {
     return this.teamsService.createTeam(createTeamDto);
   }
 
   @Get(':id')
+  @Roles(AccountRole.ADMIN, AccountRole.STAFF)
   @ApiOperation({ summary: 'Get team by ID' })
   async getTeam(@Param('id') id: string) {
     return this.teamsService.getTeam(id);
   }
 
   @Get()
+  @Roles(AccountRole.ADMIN, AccountRole.STAFF)
   @ApiOperation({ summary: 'List all teams' })
   async listTeams(@Query() query: ListTeamsQueryDto) {
     return this.teamsService.listTeams(query);
   }
 
   @Patch(':id')
+  @Roles(AccountRole.ADMIN)
   @ApiOperation({ summary: 'Update team' })
   async updateTeam(
     @Param('id') id: string,
@@ -55,6 +58,7 @@ export class TeamsController {
   }
 
   @Delete(':id')
+  @Roles(AccountRole.ADMIN)
   @ApiOperation({ summary: 'Delete team' })
   async deleteTeam(@Param('id') id: string) {
     return this.teamsService.deleteTeam(id);

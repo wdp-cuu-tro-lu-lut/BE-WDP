@@ -80,6 +80,8 @@ export class TeamsService {
 
   async deleteTeam(id: string) {
     const team = await this.getTeam(id);
+    team.isActive = false;
+    await this.teamRepository.save(team);
     return this.teamRepository.softRemove(team);
   }
 }

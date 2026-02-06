@@ -1,13 +1,14 @@
-import { IsOptional, IsArray, ValidateNested, IsInt } from 'class-validator';
+import { IsOptional, IsArray, ValidateNested, IsInt, IsString, IsNotEmpty, IsEnum, IsUUID } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
-import { ItemCondition } from '@/database/entities';
+import { ItemCondition, AllocationStatus } from '@/database/entities';
 
 export class CreateReceiptDto {
   @ApiProperty({
     example: '550e8400-e29b-41d4-a716-446655440000',
     description: 'Donation ID to create receipt from',
   })
+  @IsUUID()
   donationId!: string;
 }
 
@@ -16,6 +17,8 @@ export class AllocationItemInputDto {
     example: 'Quần áo',
     description: 'Item category',
   })
+  @IsString()
+  @IsNotEmpty()
   category!: string;
 
   @ApiProperty({
@@ -23,6 +26,7 @@ export class AllocationItemInputDto {
     example: ItemCondition.GOOD,
     description: `Item condition: ${Object.values(ItemCondition).join(', ')}`,
   })
+  @IsEnum(ItemCondition)
   condition!: ItemCondition;
 
   @ApiProperty({
@@ -39,6 +43,7 @@ export class CreateAllocationDto {
     example: '550e8400-e29b-41d4-a716-446655440001',
     description: 'Team ID receiving the allocation',
   })
+  @IsUUID()
   teamId!: string;
 
   @ApiProperty({
@@ -69,7 +74,8 @@ export class UpdateAllocationStatusDto {
     example: 'DELIVERED',
     description: 'Allocation status (e.g., PENDING, DELIVERED, RETURNED)',
   })
-  status!: string;
+  @IsEnum(AllocationStatus)
+  status!: AllocationStatus;
 }
 
 export class ListAllocationsQueryDto {
