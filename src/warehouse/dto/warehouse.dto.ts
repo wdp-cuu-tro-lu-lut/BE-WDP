@@ -56,6 +56,15 @@ export class CreateAllocationDto {
   donationId?: string;
 
   @ApiProperty({
+    example: '550e8400-e29b-41d4-a716-446655440002',
+    description: 'Event ID associated with this allocation (optional)',
+    required: false,
+  })
+  @IsOptional()
+  @IsUUID()
+  eventId?: string;
+
+  @ApiProperty({
     type: AllocationItemInputDto,
     isArray: true,
     example: [

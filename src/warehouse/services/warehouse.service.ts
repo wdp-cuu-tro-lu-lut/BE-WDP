@@ -207,6 +207,7 @@ export class WarehouseService {
         teamId: createDto.teamId,
         createdById,
         status: AllocationStatus.CREATED,
+        eventId: createDto.eventId,
       });
       const savedAllocation = await queryRunner.manager.save(allocation);
 

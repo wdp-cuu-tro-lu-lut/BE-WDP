@@ -11,6 +11,7 @@ import {
 } from 'typeorm';
 import { Team } from './team.entity';
 import { Account } from './account.entity';
+import { Event } from './event.entity';
 import { AllocationItem } from './allocation-item.entity';
 
 export enum AllocationStatus {
@@ -32,6 +33,9 @@ export class Allocation {
 
   @Column({ type: 'uuid' })
   createdById!: string;
+
+  @Column({ type: 'uuid', nullable: true })
+  eventId?: string;
 
   @Column({
     type: 'enum',
@@ -57,6 +61,10 @@ export class Allocation {
   })
   @JoinColumn({ name: 'createdById' })
   createdBy!: Account;
+
+  @ManyToOne(() => Event, { nullable: true })
+  @JoinColumn({ name: 'eventId' })
+  event?: Event;
 
   @OneToMany(() => AllocationItem, (ai) => ai.allocation, {
     cascade: true,
