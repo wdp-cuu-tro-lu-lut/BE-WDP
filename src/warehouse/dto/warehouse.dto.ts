@@ -47,6 +47,15 @@ export class CreateAllocationDto {
   teamId!: string;
 
   @ApiProperty({
+    example: '550e8400-e29b-41d4-a716-446655440000',
+    description: 'Donation ID associated with this allocation (optional)',
+    required: false,
+  })
+  @IsOptional()
+  @IsUUID()
+  donationId?: string;
+
+  @ApiProperty({
     type: AllocationItemInputDto,
     isArray: true,
     example: [

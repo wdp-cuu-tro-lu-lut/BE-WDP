@@ -148,7 +148,8 @@ export class WarehouseService {
     const qb = this.receiptRepository
       .createQueryBuilder('receipt')
       .leftJoinAndSelect('receipt.items', 'items')
-      .leftJoinAndSelect('items.category', 'category');
+      .leftJoinAndSelect('items.category', 'category')
+      .leftJoinAndSelect('receipt.donation', 'donation');
 
     const total = await qb.getCount();
     const skip = (page - 1) * limit;
@@ -233,6 +234,18 @@ export class WarehouseService {
         if (stock) {
           stock.quantity -= item.quantity;
           await queryRunner.manager.save(stock);
+        }
+      }
+
+      // Update donation status if provided
+      if (createDto.donationId) {
+        const donation = await queryRunner.manager.findOne(Donation, {
+          where: { id: createDto.donationId },
+        });
+
+        if (donation) {
+          donation.status = DonationStatus.ALLOCATED;
+          await queryRunner.manager.save(donation);
         }
       }
 
