@@ -274,14 +274,18 @@ export class WarehouseService {
   }
 
   async listAllocations(query: ListAllocationsQueryDto) {
-    const { teamId, status, page = 1, limit = 20 } = query;
+    const { teamId, eventId, status, page = 1, limit = 20 } = query;
 
     let qb = this.allocationRepository
       .createQueryBuilder('allocation')
       .leftJoinAndSelect('allocation.items', 'items');
 
     if (teamId) {
-      qb = qb.where('allocation.teamId = :teamId', { teamId });
+      qb = qb.andWhere('allocation.teamId = :teamId', { teamId });
+    }
+
+    if (eventId) {
+      qb = qb.andWhere('allocation.eventId = :eventId', { eventId });
     }
 
     if (status) {

@@ -106,6 +106,14 @@ export class ListAllocationsQueryDto {
   teamId?: string;
 
   @ApiProperty({
+    example: '550e8400-e29b-41d4-a716-446655440001',
+    description: 'Filter by event ID',
+    required: false,
+  })
+  @IsOptional()
+  eventId?: string;
+
+  @ApiProperty({
     example: 'DELIVERED',
     description: 'Filter by allocation status',
     required: false,
