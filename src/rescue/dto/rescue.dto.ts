@@ -223,6 +223,15 @@ export class ListRescueRequestsQueryDto {
   priority?: RescuePriority;
 
   @ApiProperty({
+    enum: ['true', 'false'],
+    example: 'false',
+    description: 'Lọc theo trạng thái phân công: true = đã phân công, false = chưa phân công',
+    required: false,
+  })
+  @IsOptional()
+  assigned?: string;
+
+  @ApiProperty({
     example: 'Quận 1',
     description: 'Search by address',
     required: false,

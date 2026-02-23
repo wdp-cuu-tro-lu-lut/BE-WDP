@@ -123,6 +123,7 @@ export class RescueService {
     const {
       status,
       priority,
+      assigned,
       q,
       from,
       to,
@@ -135,7 +136,9 @@ export class RescueService {
     let qb = this.rescueRepository
       .createQueryBuilder('rescue')
       .leftJoinAndSelect('rescue.creator', 'creator')
-      .leftJoinAndSelect('creator.profile', 'profile');
+      .leftJoinAndSelect('creator.profile', 'profile')
+      .leftJoinAndSelect('rescue.assignments', 'assignments')
+      .leftJoinAndSelect('assignments.team', 'team');
 
     if (status) {
       qb = qb.where('rescue.status = :status', { status });
@@ -145,6 +148,11 @@ export class RescueService {
     }
     if (q) {
       qb = qb.andWhere('rescue.address LIKE :q', { q: `%${q}%` });
+    }
+    if (assigned === 'true') {
+      qb = qb.andWhere('assignments.id IS NOT NULL');
+    } else if (assigned === 'false') {
+      qb = qb.andWhere('assignments.id IS NULL');
     }
     if (from) {
       qb = qb.andWhere('rescue.createdAt >= :from', {
@@ -164,18 +172,33 @@ export class RescueService {
       .getMany();
 
     // Fill guestName/guestPhone từ creator nếu chưa có (request cũ)
+    // Thêm thông tin phân công đội cứu trợ
     const data = requests.map((r) => {
       const filledGuestName =
         r.guestName ?? r.creator?.profile?.fullName ?? null;
       const filledGuestPhone =
         r.guestPhone ?? r.creator?.phone ?? null;
 
-      // Bỏ creator ra khỏi response, chỉ giữ thông tin đã fill
-      const { creator, ...rest } = r as any;
+      // Tóm tắt thông tin phân công
+      const assignedTeams =
+        r.assignments && r.assignments.length > 0
+          ? r.assignments.map((a) => ({
+              assignmentId: a.id,
+              teamId: a.teamId,
+              teamName: a.team?.name ?? null,
+              status: a.status,
+              respondedAt: a.respondedAt,
+            }))
+          : [];
+
+      // Bỏ creator và assignments gốc ra khỏi response
+      const { creator, assignments, ...rest } = r as any;
       return {
         ...rest,
         guestName: filledGuestName,
         guestPhone: filledGuestPhone,
+        assignedTeams,
+        isAssigned: assignedTeams.length > 0,
       };
     });
 
