@@ -1,6 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import {
+  Repository,
+  In,
+  MoreThanOrEqual,
+  LessThanOrEqual,
+  Between,
+  IsNull,
+} from 'typeorm';
 import { Donation, DonationItem, DonationStatus, Category } from '@/database/entities';
 import {
   CreateDonationDto,
@@ -110,41 +117,89 @@ export class DonationsService {
       order = 'DESC',
     } = query;
 
-    let qb = this.donationRepository.createQueryBuilder('donation')
-      .leftJoinAndSelect('donation.items', 'items')
-      .leftJoinAndSelect('items.category', 'category')
-      .leftJoinAndSelect('donation.creator', 'creator')
-      .leftJoinAndSelect('creator.profile', 'creatorProfile');
+    const skip = (page - 1) * limit;
+
+    const where: any = {}; // Use any to avoid complex type checking issues temporarily if Donation entity lacks full type safety for FindOptionsWhere
+    // Ideally use FindOptionsWhere<Donation> but let's be pragmatic first.
+    
+    // Explicitly filter active donations because withDeleted: true makes find return deleted ones too
+    where.deletedAt = IsNull();
 
     if (status) {
-      qb = qb.where('donation.status = :status', { status });
+      where.status = status;
     }
 
     if (eventId) {
-      qb = qb.andWhere('donation.eventId = :eventId', { eventId });
+      where.eventId = eventId;
     }
 
-    if (from) {
-      qb = qb.andWhere('donation.createdAt >= :from', {
-        from: new Date(from),
-      });
+    if (from || to) {
+      if (from && to) {
+        where.createdAt = Between(new Date(from), new Date(to));
+      } else if (from) {
+        where.createdAt = MoreThanOrEqual(new Date(from));
+      } else if (to) {
+        where.createdAt = LessThanOrEqual(new Date(to));
+      }
     }
 
-    if (to) {
-      qb = qb.andWhere('donation.createdAt <= :to', { to: new Date(to) });
-    }
+    // Using findAndCount to get both data and total count
+    // Using FindOptionsWhere type would require importing it and ensuring compatibility, using 'any' for now to be safe with existing codebase structure.
+    const [donations, total] = await this.donationRepository.findAndCount({
+      where,
+      relations: {
+        event: true,
+        items: {
+          category: true,
+        },
+        creator: {
+          profile: true,
+        },
+      },
+      withDeleted: true, // Key fix: Allows loading soft-deleted relations (such as soft-deleted events)
+      order: {
+        [sortBy]: order,
+      },
+      skip,
+      take: limit,
+    });
 
-    const total = await qb.getCount();
-    const skip = (page - 1) * limit;
-    const donations = await qb
-      .orderBy(`donation.${sortBy}`, order)
-      .skip(skip)
-      .take(limit)
-      .getMany();
+    const data = donations.map((donation) => {
+      const {
+        id,
+        creatorId,
+        eventId,
+        status,
+        note,
+        createdAt,
+        updatedAt,
+        deletedAt,
+        items,
+        creator,
+        event,
+      } = donation;
+      const safeCreator = creator
+        ? (({ passwordHash, ...creatorWithoutPassword }) => creatorWithoutPassword)(creator)
+        : creator;
+
+      return {
+        id,
+        creatorId,
+        eventId,
+        title: event?.title ?? null,
+        status,
+        note,
+        createdAt,
+        updatedAt,
+        deletedAt,
+        items,
+        creator: safeCreator,
+      };
+    });
 
     return {
-      data: donations,
-      meta: { total, page, limit, pages: Math.ceil(total / limit) },
+      data,
+      meta: { total, page: Number(page), limit: Number(limit), pages: Math.ceil(total / limit) },
     };
   }
 
