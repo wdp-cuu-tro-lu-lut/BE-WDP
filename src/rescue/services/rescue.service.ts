@@ -62,6 +62,7 @@ export class RescueService {
       longitude: createDto.longitude,
       priority: createDto.priority,
       note: createDto.note,
+      estimatedPeople: createDto.estimatedPeople,
     });
     return this.rescueRepository.save(rescue);
   }
@@ -193,12 +194,23 @@ export class RescueService {
 
       // Bỏ creator và assignments gốc ra khỏi response
       const { creator, assignments, ...rest } = r as any;
+
+      const acceptedCount = assignedTeams.filter(
+        (t: any) => t.status === AssignmentStatus.ACCEPTED,
+      ).length;
+
       return {
         ...rest,
         guestName: filledGuestName,
         guestPhone: filledGuestPhone,
         assignedTeams,
         isAssigned: assignedTeams.length > 0,
+        teamSummary: {
+          required: r.requiredTeams ?? 1,
+          assigned: assignedTeams.length,
+          accepted: acceptedCount,
+          isFulfilled: acceptedCount >= (r.requiredTeams ?? 1),
+        },
       };
     });
 
@@ -219,6 +231,7 @@ export class RescueService {
 
     rescue.status = reviewDto.status;
     if (reviewDto.priority !== undefined) rescue.priority = reviewDto.priority;
+    if (reviewDto.requiredTeams !== undefined) rescue.requiredTeams = reviewDto.requiredTeams;
     if (reviewDto.note !== undefined) rescue.note = reviewDto.note;
 
     return this.rescueRepository.save(rescue);
@@ -227,12 +240,30 @@ export class RescueService {
   async assignTeams(id: string, createDto: CreateRescueAssignmentDto) {
     const rescue = await this.getRequest(id);
 
-    if (rescue.status !== RescueStatus.REVIEWED) {
-      throw new ConflictException('Can only assign reviewed requests');
+    // Cho phép assign khi REVIEWED hoặc ASSIGNED (để bổ sung team)
+    if (
+      rescue.status !== RescueStatus.REVIEWED &&
+      rescue.status !== RescueStatus.ASSIGNED
+    ) {
+      throw new ConflictException(
+        'Can only assign teams to REVIEWED or ASSIGNED requests',
+      );
+    }
+
+    // Lọc bỏ team đã được assign rồi (tránh duplicate)
+    const existingTeamIds = (rescue.assignments ?? []).map((a) => a.teamId);
+    const newTeamIds = createDto.teamIds.filter(
+      (tid) => !existingTeamIds.includes(tid),
+    );
+
+    if (newTeamIds.length === 0) {
+      throw new ConflictException(
+        'All specified teams are already assigned to this request',
+      );
     }
 
     // Create assignments
-    const assignments = createDto.teamIds.map(teamId =>
+    const assignments = newTeamIds.map((teamId) =>
       this.assignmentRepository.create({
         rescueRequestId: id,
         teamId,
@@ -241,8 +272,12 @@ export class RescueService {
 
     await this.assignmentRepository.save(assignments);
 
-    // Update request status
-    await this.rescueRepository.update(id, { status: RescueStatus.ASSIGNED });
+    // Update request status nếu chưa phải ASSIGNED
+    if (rescue.status !== RescueStatus.ASSIGNED) {
+      await this.rescueRepository.update(id, {
+        status: RescueStatus.ASSIGNED,
+      });
+    }
 
     return this.getRequest(id);
   }
@@ -293,20 +328,31 @@ export class RescueService {
     assignment.respondedAt = new Date();
 
     if (respondDto.status === AssignmentStatus.ACCEPTED) {
-      // Cancel other pending assignments
-      const otherAssignments = assignment.rescueRequest.assignments.filter(
-        a => a.id !== assignmentId && a.status === AssignmentStatus.SENT,
-      );
+      const request = assignment.rescueRequest;
+      const requiredTeams = request.requiredTeams ?? 1;
 
-      for (const other of otherAssignments) {
-        other.status = AssignmentStatus.CANCELED;
+      // Đếm số team đã ACCEPTED (bao gồm cả assignment hiện tại)
+      const acceptedCount =
+        request.assignments.filter((a) => a.status === AssignmentStatus.ACCEPTED).length + 1;
+
+      if (acceptedCount >= requiredTeams) {
+        // Đủ team rồi — cancel các assignment còn chờ
+        const pendingAssignments = request.assignments.filter(
+          (a) =>
+            a.id !== assignmentId && a.status === AssignmentStatus.SENT,
+        );
+
+        for (const other of pendingAssignments) {
+          other.status = AssignmentStatus.CANCELED;
+        }
+
+        await this.assignmentRepository.save(pendingAssignments);
+
+        // Update rescue status → ACCEPTED
+        request.status = RescueStatus.ACCEPTED;
+        await this.rescueRepository.save(request);
       }
-
-      await this.assignmentRepository.save(otherAssignments);
-
-      // Update rescue status
-      assignment.rescueRequest.status = RescueStatus.ACCEPTED;
-      await this.rescueRepository.save(assignment.rescueRequest);
+      // Chưa đủ team — giữ nguyên status ASSIGNED, chờ thêm team accept
     }
 
     return this.assignmentRepository.save(assignment);

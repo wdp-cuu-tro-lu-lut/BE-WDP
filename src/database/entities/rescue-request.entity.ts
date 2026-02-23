@@ -73,6 +73,12 @@ export class RescueRequest {
   @Column({ type: 'text', nullable: true })
   note!: string;
 
+  @Column({ type: 'int', default: 1 })
+  requiredTeams!: number;
+
+  @Column({ type: 'int', nullable: true })
+  estimatedPeople!: number | null;
+
   @CreateDateColumn()
   createdAt!: Date;
 

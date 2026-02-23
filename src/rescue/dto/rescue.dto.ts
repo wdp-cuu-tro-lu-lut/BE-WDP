@@ -1,4 +1,4 @@
-import { IsOptional, IsEnum, IsNumber, IsString, IsNotEmpty, IsArray, IsUUID, ArrayNotEmpty, IsPhoneNumber, MaxLength } from 'class-validator';
+import { IsOptional, IsEnum, IsNumber, IsString, IsNotEmpty, IsArray, IsUUID, ArrayNotEmpty, IsPhoneNumber, MaxLength, Min, IsInt } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { RescuePriority, RescueStatus, AssignmentStatus } from '@/database/entities';
 
@@ -47,6 +47,16 @@ export class CreateRescueRequestDto {
   @IsOptional()
   @IsString()
   note?: string;
+
+  @ApiProperty({
+    example: 5,
+    description: 'Ước lượng số người bị ảnh hưởng / cần cứu trợ',
+    required: false,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  estimatedPeople?: number;
 }
 
 /**
@@ -116,6 +126,16 @@ export class CreateGuestRescueRequestDto {
   @IsOptional()
   @IsString()
   note?: string;
+
+  @ApiProperty({
+    example: 10,
+    description: 'Ước lượng số người bị ảnh hưởng / cần cứu trợ',
+    required: false,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  estimatedPeople?: number;
 }
 
 /**
@@ -150,6 +170,16 @@ export class ReviewRescueRequestDto {
   @IsOptional()
   @IsEnum(RescuePriority)
   priority?: RescuePriority;
+
+  @ApiProperty({
+    example: 3,
+    description: 'Số team cần thiết cho request này (admin đánh giá)',
+    required: false,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  requiredTeams?: number;
 
   @ApiProperty({
     example: 'Approved - dispatching nearest team',

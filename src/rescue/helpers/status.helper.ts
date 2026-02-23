@@ -13,6 +13,7 @@ export class RescueStatusTransition {
     [RescueStatus.ASSIGNED]: [
       RescueStatus.ACCEPTED,
       RescueStatus.REJECTED,
+      RescueStatus.CANCELED,
     ],
     [RescueStatus.ACCEPTED]: [
       RescueStatus.IN_PROGRESS,
