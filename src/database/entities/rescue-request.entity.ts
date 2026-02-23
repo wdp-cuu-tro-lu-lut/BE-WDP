@@ -38,8 +38,14 @@ export class RescueRequest {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column({ type: 'uuid' })
-  creatorId!: string;
+  @Column({ type: 'uuid', nullable: true })
+  creatorId!: string | null;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  guestName!: string | null;
+
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  guestPhone!: string | null;
 
   @Column({ type: 'text' })
   address!: string;
@@ -74,10 +80,11 @@ export class RescueRequest {
   updatedAt!: Date;
 
   @ManyToOne(() => Account, (account) => account.rescueRequests, {
-    onDelete: 'CASCADE',
+    onDelete: 'SET NULL',
+    nullable: true,
   })
   @JoinColumn({ name: 'creatorId' })
-  creator!: Account;
+  creator!: Account | null;
 
   @OneToMany(() => RescueAssignment, (ra) => ra.rescueRequest, {
     cascade: true,

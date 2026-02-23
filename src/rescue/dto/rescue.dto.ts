@@ -1,4 +1,4 @@
-import { IsOptional, IsEnum, IsNumber, IsString, IsNotEmpty, IsArray, IsUUID, ArrayNotEmpty } from 'class-validator';
+import { IsOptional, IsEnum, IsNumber, IsString, IsNotEmpty, IsArray, IsUUID, ArrayNotEmpty, IsPhoneNumber, MaxLength } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { RescuePriority, RescueStatus, AssignmentStatus } from '@/database/entities';
 
@@ -47,6 +47,89 @@ export class CreateRescueRequestDto {
   @IsOptional()
   @IsString()
   note?: string;
+}
+
+/**
+ * DTO cho guest (chưa đăng nhập) gửi yêu cầu cứu trợ khẩn cấp.
+ * Bắt buộc phải cung cấp tên + SĐT để liên lạc.
+ */
+export class CreateGuestRescueRequestDto {
+  @ApiProperty({
+    example: 'Nguyễn Văn A',
+    description: 'Tên người gửi yêu cầu (chưa đăng nhập)',
+  })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  guestName!: string;
+
+  @ApiProperty({
+    example: '0901234567',
+    description: 'Số điện thoại liên lạc',
+  })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(20)
+  guestPhone!: string;
+
+  @ApiProperty({
+    example: '123 Đường ABC, Quận 1, TP.HCM',
+    description: 'Rescue location address',
+  })
+  @IsString()
+  @IsNotEmpty()
+  address!: string;
+
+  @ApiProperty({
+    example: 10.7769,
+    description: 'Latitude coordinate',
+    required: false,
+  })
+  @IsOptional()
+  @IsNumber()
+  latitude?: number;
+
+  @ApiProperty({
+    example: 106.6966,
+    description: 'Longitude coordinate',
+    required: false,
+  })
+  @IsOptional()
+  @IsNumber()
+  longitude?: number;
+
+  @ApiProperty({
+    enum: RescuePriority,
+    example: RescuePriority.HIGH,
+    description: `Priority level: ${Object.values(RescuePriority).join(', ')}`,
+    required: false,
+  })
+  @IsOptional()
+  @IsEnum(RescuePriority)
+  priority?: RescuePriority;
+
+  @ApiProperty({
+    example: 'Người bị mắc kẹt trong lũ, cần cứu gấp',
+    description: 'Additional notes',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  note?: string;
+}
+
+/**
+ * DTO cho user đã đăng nhập "nhận lại" rescue request mà trước đó gửi khi chưa login.
+ * Đối chiếu bằng SĐT.
+ */
+export class ClaimRescueRequestDto {
+  @ApiProperty({
+    example: '0901234567',
+    description: 'Số điện thoại đã dùng khi gửi yêu cầu lúc chưa đăng nhập',
+  })
+  @IsString()
+  @IsNotEmpty()
+  guestPhone!: string;
 }
 
 export class ReviewRescueRequestDto {

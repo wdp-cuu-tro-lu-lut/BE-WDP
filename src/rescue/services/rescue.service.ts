@@ -10,6 +10,8 @@ import {
 } from '@/database/entities';
 import {
   CreateRescueRequestDto,
+  CreateGuestRescueRequestDto,
+  ClaimRescueRequestDto,
   ReviewRescueRequestDto,
   CreateRescueAssignmentDto,
   RespondAssignmentDto,
@@ -44,6 +46,50 @@ export class RescueService {
       ...createDto,
     });
     return this.rescueRepository.save(rescue);
+  }
+
+  /**
+   * Tạo rescue request cho guest (chưa đăng nhập).
+   * creatorId = null, lưu thông tin liên lạc guestName + guestPhone.
+   */
+  async createGuestRequest(createDto: CreateGuestRescueRequestDto) {
+    const rescue = this.rescueRepository.create({
+      creatorId: null,
+      guestName: createDto.guestName,
+      guestPhone: createDto.guestPhone,
+      address: createDto.address,
+      latitude: createDto.latitude,
+      longitude: createDto.longitude,
+      priority: createDto.priority,
+      note: createDto.note,
+    });
+    return this.rescueRepository.save(rescue);
+  }
+
+  /**
+   * User đã đăng nhập "nhận lại" các rescue request mà họ đã gửi khi chưa login.
+   * Đối chiếu qua guestPhone. Gán creatorId = userId.
+   */
+  async claimGuestRequests(userId: string, claimDto: ClaimRescueRequestDto) {
+    const unclaimed = await this.rescueRepository.find({
+      where: {
+        creatorId: null as any,
+        guestPhone: claimDto.guestPhone,
+      },
+    });
+
+    if (unclaimed.length === 0) {
+      throw new ResourceNotFoundException(
+        'Rescue request',
+        `guestPhone=${claimDto.guestPhone}`,
+      );
+    }
+
+    for (const req of unclaimed) {
+      req.creatorId = userId;
+    }
+
+    return this.rescueRepository.save(unclaimed);
   }
 
   async getRequest(id: string) {
@@ -86,7 +132,10 @@ export class RescueService {
       order = 'DESC',
     } = query;
 
-    let qb = this.rescueRepository.createQueryBuilder('rescue');
+    let qb = this.rescueRepository
+      .createQueryBuilder('rescue')
+      .leftJoinAndSelect('rescue.creator', 'creator')
+      .leftJoinAndSelect('creator.profile', 'profile');
 
     if (status) {
       qb = qb.where('rescue.status = :status', { status });
@@ -114,8 +163,24 @@ export class RescueService {
       .take(limit)
       .getMany();
 
+    // Fill guestName/guestPhone từ creator nếu chưa có (request cũ)
+    const data = requests.map((r) => {
+      const filledGuestName =
+        r.guestName ?? r.creator?.profile?.fullName ?? null;
+      const filledGuestPhone =
+        r.guestPhone ?? r.creator?.phone ?? null;
+
+      // Bỏ creator ra khỏi response, chỉ giữ thông tin đã fill
+      const { creator, ...rest } = r as any;
+      return {
+        ...rest,
+        guestName: filledGuestName,
+        guestPhone: filledGuestPhone,
+      };
+    });
+
     return {
-      data: requests,
+      data,
       meta: { total, page, limit, pages: Math.ceil(total / limit) },
     };
   }

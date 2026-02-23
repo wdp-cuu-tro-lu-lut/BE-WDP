@@ -13,6 +13,11 @@ import {
   Category,
   DonationStatus,
   ItemCondition,
+  RescueRequest,
+  RescueAssignment,
+  RescueStatus,
+  RescuePriority,
+  AssignmentStatus,
 } from '../database/entities';
 
 async function seed() {
@@ -27,6 +32,8 @@ async function seed() {
   const donationRepository = AppDataSource.getRepository(Donation);
   const donationItemRepository = AppDataSource.getRepository(DonationItem);
   const categoryRepository = AppDataSource.getRepository(Category);
+  const rescueRequestRepository = AppDataSource.getRepository(RescueRequest);
+  const rescueAssignmentRepository = AppDataSource.getRepository(RescueAssignment);
 
   console.log('Seeding database...');
 
@@ -330,6 +337,87 @@ async function seed() {
     await donationItemRepository.save(donation3Items);
 
     console.log('✓ Created 3 sample donations with total 9 items');
+  }
+
+  // Check if rescue requests already exist
+  const existingRescueRequests = await rescueRequestRepository.count();
+
+  if (existingRescueRequests > 0) {
+    console.log(`→ Database already has ${existingRescueRequests} rescue request(s). Skipping sample rescue requests.`);
+  } else {
+    console.log('Creating sample rescue requests and assignments...');
+
+    // Find the team to assign requests to
+    // First try to find the team managed by our team user
+    const teamUser = await accountRepository.findOne({ where: { email: 'team@example.com' } });
+    let targetTeam = null;
+    
+    if (teamUser) {
+      targetTeam = await teamRepository.findOne({ where: { accountId: teamUser.id } });
+      if (targetTeam) {
+        console.log(`✓ Found team managed by team@example.com: ${targetTeam.name}`);
+      }
+    }
+
+    // Fallback to Alpha Rescue Team if no team found for user
+    if (!targetTeam) {
+      targetTeam = await teamRepository.findOne({ where: { name: 'Alpha Rescue Team' } });
+    }
+
+    if (targetTeam) {
+      // Request 1: High priority, assigned to team
+      const request1 = rescueRequestRepository.create({
+        creatorId: savedUser.id,
+        address: '123 Flooded Street, District 1',
+        note: 'Gia đình 4 người bị kẹt trên mái nhà, nước đang dâng cao.',
+        status: RescueStatus.ASSIGNED,
+        priority: RescuePriority.HIGH,
+        latitude: 10.762622,
+        longitude: 106.660172,
+      });
+      const savedRequest1 = await rescueRequestRepository.save(request1);
+
+      const assignment1 = rescueAssignmentRepository.create({
+        rescueRequestId: savedRequest1.id,
+        teamId: targetTeam.id,
+        status: AssignmentStatus.SENT,
+      });
+      await rescueAssignmentRepository.save(assignment1);
+      console.log(`✓ Created Rescue Request 1 and assigned to ${targetTeam.name}`);
+
+      // Request 2: Critical, New (not assigned yet)
+      const request2 = rescueRequestRepository.create({
+        creatorId: savedUser.id,
+        address: '456 Danger Lane',
+        note: 'Người già cần cấp cứu gấp.',
+        status: RescueStatus.NEW,
+        priority: RescuePriority.CRITICAL,
+      });
+      await rescueRequestRepository.save(request2);
+      console.log('✓ Created Rescue Request 2 (New)');
+      
+      // Request 3: Assigned and Accepted
+       const request3 = rescueRequestRepository.create({
+        creatorId: savedUser.id,
+        address: '789 Safe Blvd',
+        note: 'Cần lương thực gấp.',
+        status: RescueStatus.ASSIGNED, 
+        priority: RescuePriority.MEDIUM,
+      });
+      const savedRequest3 = await rescueRequestRepository.save(request3);
+
+      const assignment3 = rescueAssignmentRepository.create({
+        rescueRequestId: savedRequest3.id,
+        teamId: targetTeam.id,
+        status: AssignmentStatus.ACCEPTED, // This should be valid enum
+        respondedAt: new Date(),
+      });
+      await rescueAssignmentRepository.save(assignment3);
+      console.log(`✓ Created Rescue Request 3 and assigned/accepted by ${targetTeam.name}`);
+
+    } else {
+        console.warn('Could not find any Team to assign requests!');
+    }
   }
 
   console.log('');

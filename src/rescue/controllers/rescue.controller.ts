@@ -9,11 +9,13 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import { JwtAuthGuard, RolesGuard, Roles, CurrentUser } from '@/common';
+import { JwtAuthGuard, RolesGuard, Roles, CurrentUser, Public } from '@/common';
 import { AccountRole } from '@/database/entities';
 import { RescueService } from '@/rescue/services';
 import {
   CreateRescueRequestDto,
+  CreateGuestRescueRequestDto,
+  ClaimRescueRequestDto,
   ReviewRescueRequestDto,
   CreateRescueAssignmentDto,
   RespondAssignmentDto,
@@ -27,16 +29,50 @@ import {
 export class RescueController {
   constructor(private readonly rescueService: RescueService) {}
 
+  /**
+   * Guest (chưa đăng nhập) gửi yêu cầu cứu trợ khẩn cấp.
+   * Không cần JWT — chỉ cần tên + SĐT + địa chỉ.
+   */
+  @Post('guest')
+  @Public()
+  @ApiOperation({
+    summary: 'Gửi yêu cầu cứu trợ KHÔNG cần đăng nhập (guest)',
+    description:
+      'Dành cho trường hợp khẩn cấp. Guest cung cấp tên, SĐT, và địa chỉ. Sau khi đăng nhập có thể claim lại request.',
+  })
+  async createGuestRequest(@Body() createDto: CreateGuestRescueRequestDto) {
+    return this.rescueService.createGuestRequest(createDto);
+  }
+
   @Post()
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(AccountRole.USER)
-  @ApiOperation({ summary: 'Create rescue request (USER)' })
+  @ApiOperation({ summary: 'Create rescue request (USER — đã đăng nhập)' })
   async createRequest(
     @CurrentUser() user: any,
     @Body() createDto: CreateRescueRequestDto,
   ) {
     return this.rescueService.createRequest(user.id, createDto);
+  }
+
+  /**
+   * User đã đăng nhập nhận lại (claim) các rescue request đã gửi khi chưa login.
+   * Đối chiếu bằng guestPhone.
+   */
+  @Post('claim')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary: 'Claim guest rescue requests sau khi đăng nhập',
+    description:
+      'User đã đăng nhập cung cấp SĐT đã dùng lúc gửi guest request. Hệ thống sẽ gán creatorId cho các request đó.',
+  })
+  async claimGuestRequests(
+    @CurrentUser() user: any,
+    @Body() claimDto: ClaimRescueRequestDto,
+  ) {
+    return this.rescueService.claimGuestRequests(user.id, claimDto);
   }
 
   @Get('mine')
@@ -71,8 +107,8 @@ export class RescueController {
   @Get()
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(AccountRole.ADMIN, AccountRole.STAFF)
-  @ApiOperation({ summary: 'List rescue requests (ADMIN/STAFF)' })
+  @Roles(AccountRole.ADMIN, AccountRole.STAFF, AccountRole.RESCUE_TEAM)
+  @ApiOperation({ summary: 'List rescue requests (ADMIN/STAFF/RESCUE_TEAM)' })
   async listRequests(@Query() query: ListRescueRequestsQueryDto) {
     return this.rescueService.listRequests(query);
   }
