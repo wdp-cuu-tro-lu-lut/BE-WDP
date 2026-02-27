@@ -372,18 +372,28 @@ export class RescueService {
       throw new ConflictException('Can only update progress on accepted assignments');
     }
 
-    if (!RescueStatusTransition.isValidTransition(assignment.rescueRequest.status, updateDto.status)) {
+    const request = assignment.rescueRequest;
+
+    // Auto-transition ASSIGNED → ACCEPTED when a team starts work
+    if (
+      request.status === RescueStatus.ASSIGNED &&
+      updateDto.status === RescueStatus.IN_PROGRESS
+    ) {
+      request.status = RescueStatus.ACCEPTED;
+    }
+
+    if (!RescueStatusTransition.isValidTransition(request.status, updateDto.status)) {
       throw new ConflictException(
         `Cannot transition to ${updateDto.status}`,
       );
     }
 
-    assignment.rescueRequest.status = updateDto.status;
+    request.status = updateDto.status;
     if (updateDto.progressNote) {
       assignment.progressNote = updateDto.progressNote;
     }
 
-    await this.rescueRepository.save(assignment.rescueRequest);
+    await this.rescueRepository.save(request);
     return this.assignmentRepository.save(assignment);
   }
 
