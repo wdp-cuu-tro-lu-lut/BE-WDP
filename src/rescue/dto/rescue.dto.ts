@@ -1,4 +1,4 @@
-import { IsOptional, IsEnum, IsNumber, IsString, IsNotEmpty, IsArray, IsUUID, ArrayNotEmpty, IsPhoneNumber, MaxLength, Min, IsInt } from 'class-validator';
+import { IsOptional, IsEnum, IsNumber, IsString, IsNotEmpty, IsArray, IsUUID, ArrayNotEmpty, MaxLength, Min, IsInt, ArrayMaxSize } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { RescuePriority, RescueStatus, AssignmentStatus } from '@/database/entities';
 
@@ -57,6 +57,19 @@ export class CreateRescueRequestDto {
   @IsInt()
   @Min(1)
   estimatedPeople?: number;
+
+  @ApiProperty({
+    example: ['/uploads/abc123.jpg', '/uploads/def456.png'],
+    description: 'Danh sách URL ảnh hiện trường',
+    required: false,
+    isArray: true,
+    type: 'string',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @IsString({ each: true })
+  evidenceImages?: string[];
 }
 
 /**
@@ -136,6 +149,19 @@ export class CreateGuestRescueRequestDto {
   @IsInt()
   @Min(1)
   estimatedPeople?: number;
+
+  @ApiProperty({
+    example: ['/uploads/abc123.jpg'],
+    description: 'Danh sách URL ảnh hiện trường',
+    required: false,
+    isArray: true,
+    type: 'string',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @IsString({ each: true })
+  evidenceImages?: string[];
 }
 
 /**

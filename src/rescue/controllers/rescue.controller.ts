@@ -7,11 +7,17 @@ import {
   Param,
   Query,
   UseGuards,
+  UseInterceptors,
+  UploadedFiles,
+  BadRequestException,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
+import { FilesInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { JwtAuthGuard, RolesGuard, Roles, CurrentUser, Public } from '@/common';
 import { AccountRole } from '@/database/entities';
 import { RescueService } from '@/rescue/services';
+import { FilesService } from '@/files/services';
 import {
   CreateRescueRequestDto,
   CreateGuestRescueRequestDto,
@@ -27,7 +33,10 @@ import {
 @Controller('rescue-requests')
 @ApiTags('Rescue')
 export class RescueController {
-  constructor(private readonly rescueService: RescueService) {}
+  constructor(
+    private readonly rescueService: RescueService,
+    private readonly filesService: FilesService,
+  ) {}
 
   /**
    * Guest (chưa đăng nhập) gửi yêu cầu cứu trợ khẩn cấp.
@@ -48,12 +57,72 @@ export class RescueController {
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(AccountRole.USER)
+  @UseInterceptors(
+    FilesInterceptor('images', 10, {
+      storage: memoryStorage(),
+      fileFilter: (req, file, cb) => {
+        const allowedMimes = [
+          'image/jpeg',
+          'image/png',
+          'image/gif',
+          'image/webp',
+        ];
+
+        if (allowedMimes.includes(file.mimetype)) {
+          cb(null, true);
+        } else {
+          cb(new BadRequestException('Invalid image type'), false);
+        }
+      },
+      limits: { fileSize: 10 * 1024 * 1024 },
+    }),
+  )
   @ApiOperation({ summary: 'Create rescue request (USER — đã đăng nhập)' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        address: { type: 'string', example: '123 Đường ABC, Quận 1, TP.HCM' },
+        latitude: { type: 'number', example: 10.7769 },
+        longitude: { type: 'number', example: 106.6966 },
+        priority: {
+          type: 'string',
+          enum: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'],
+          example: 'HIGH',
+        },
+        note: { type: 'string', example: 'Mực nước đang dâng cao' },
+        estimatedPeople: { type: 'number', example: 5 },
+        images: {
+          type: 'array',
+          items: { type: 'string', format: 'binary' },
+        },
+      },
+      required: ['address'],
+    },
+  })
   async createRequest(
     @CurrentUser() user: any,
     @Body() createDto: CreateRescueRequestDto,
+    @UploadedFiles() files: Express.Multer.File[],
   ) {
-    return this.rescueService.createRequest(user.id, createDto);
+    const uploaded = files?.length
+      ? await Promise.all(
+          files.map((file) => this.filesService.uploadImage(file, 'wdp')),
+        )
+      : [];
+
+    const mergedEvidenceImages = Array.from(
+      new Set([
+        ...(createDto.evidenceImages ?? []),
+        ...uploaded.map((item) => item.url),
+      ]),
+    ).slice(0, 10);
+
+    return this.rescueService.createRequest(user.id, {
+      ...createDto,
+      evidenceImages: mergedEvidenceImages,
+    });
   }
 
   /**
@@ -101,6 +170,63 @@ export class RescueController {
   @ApiOperation({ summary: 'Cancel rescue request (USER owner)' })
   async cancelRequest(@Param('id') id: string, @CurrentUser() user: any) {
     return this.rescueService.cancelRequest(id, user.id);
+  }
+
+  @Post(':id/evidence-images')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(
+    FilesInterceptor('images', 10, {
+      storage: memoryStorage(),
+      fileFilter: (req, file, cb) => {
+        const allowedMimes = [
+          'image/jpeg',
+          'image/png',
+          'image/gif',
+          'image/webp',
+        ];
+
+        if (allowedMimes.includes(file.mimetype)) {
+          cb(null, true);
+        } else {
+          cb(new BadRequestException('Invalid image type'), false);
+        }
+      },
+      limits: { fileSize: 10 * 1024 * 1024 },
+    }),
+  )
+  @ApiOperation({ summary: 'Upload ảnh hiện trường cho rescue request' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        images: {
+          type: 'array',
+          items: {
+            type: 'string',
+            format: 'binary',
+          },
+        },
+      },
+      required: ['images'],
+    },
+  })
+  async uploadEvidenceImages(
+    @Param('id') id: string,
+    @CurrentUser() user: any,
+    @UploadedFiles() files: Express.Multer.File[],
+  ) {
+    if (!files || files.length === 0) {
+      throw new BadRequestException('No images uploaded');
+    }
+
+    const uploaded = await Promise.all(
+      files.map((file) => this.filesService.uploadImage(file, 'wdp')),
+    );
+    const imageUrls = uploaded.map((item) => item.url);
+
+    return this.rescueService.addEvidenceImages(id, user, imageUrls);
   }
 
   // ADMIN endpoints

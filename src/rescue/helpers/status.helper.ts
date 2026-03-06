@@ -4,10 +4,12 @@ export class RescueStatusTransition {
   private static readonly transitions: Record<RescueStatus, RescueStatus[]> = {
     [RescueStatus.NEW]: [
       RescueStatus.REVIEWED,
+      RescueStatus.REJECTED,
       RescueStatus.CANCELED,
     ],
     [RescueStatus.REVIEWED]: [
       RescueStatus.ASSIGNED,
+      RescueStatus.REJECTED,
       RescueStatus.CANCELED,
     ],
     [RescueStatus.ASSIGNED]: [

@@ -1,12 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { Repository } from 'typeorm';
 import {
   RescueRequest,
   RescueAssignment,
   RescueStatus,
   AssignmentStatus,
   Team,
+  AccountRole,
 } from '@/database/entities';
 import {
   CreateRescueRequestDto,
@@ -44,6 +45,7 @@ export class RescueService {
     const rescue = this.rescueRepository.create({
       creatorId,
       ...createDto,
+      evidenceImages: createDto.evidenceImages ?? [],
     });
     return this.rescueRepository.save(rescue);
   }
@@ -63,7 +65,33 @@ export class RescueService {
       priority: createDto.priority,
       note: createDto.note,
       estimatedPeople: createDto.estimatedPeople,
+      evidenceImages: createDto.evidenceImages ?? [],
     });
+    return this.rescueRepository.save(rescue);
+  }
+
+  async addEvidenceImages(
+    requestId: string,
+    actor: { id: string; role?: AccountRole },
+    imageUrls: string[],
+  ) {
+    const rescue = await this.getRequest(requestId);
+
+    const canManageAnyRequest =
+      actor.role === AccountRole.ADMIN || actor.role === AccountRole.STAFF;
+
+    if (!canManageAnyRequest && rescue.creatorId !== actor.id) {
+      throw new ForbiddenException(
+        'You are not allowed to upload evidence images for this request',
+      );
+    }
+
+    const existingImages = rescue.evidenceImages ?? [];
+    const merged = Array.from(new Set([...existingImages, ...imageUrls]));
+
+    // Hard cap để tránh payload quá lớn trong 1 request.
+    rescue.evidenceImages = merged.slice(0, 10);
+
     return this.rescueRepository.save(rescue);
   }
 

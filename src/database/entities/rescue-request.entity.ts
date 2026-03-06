@@ -73,6 +73,9 @@ export class RescueRequest {
   @Column({ type: 'text', nullable: true })
   note!: string;
 
+  @Column({ type: 'simple-json', nullable: true })
+  evidenceImages!: string[] | null;
+
   @Column({ type: 'int', default: 1 })
   requiredTeams!: number;
 
