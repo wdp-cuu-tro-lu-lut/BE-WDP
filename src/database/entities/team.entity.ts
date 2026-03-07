@@ -6,10 +6,13 @@ import {
   UpdateDateColumn,
   DeleteDateColumn,
   OneToMany,
+  OneToOne,
+  JoinColumn,
   Index,
 } from 'typeorm';
 import { RescueAssignment } from './rescue-assignment.entity';
 import { Allocation } from './allocation.entity';
+import { Account } from './account.entity';
 
 @Entity('teams')
 @Index(['isActive'])
@@ -28,6 +31,10 @@ export class Team {
 
   @Column({ type: 'uuid', nullable: true })
   accountId?: string; // Liên kết với tài khoản quản lý (đội trưởng)
+
+  @OneToOne(() => Account, { nullable: true })
+  @JoinColumn({ name: 'accountId' })
+  account?: Account;
 
   @Column({ type: 'boolean', default: true })
   isActive!: boolean;

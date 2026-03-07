@@ -1,4 +1,12 @@
-import { IsOptional, IsInt, IsBoolean, IsString, IsNotEmpty } from 'class-validator';
+import {
+  IsOptional,
+  IsInt,
+  IsBoolean,
+  IsString,
+  IsNotEmpty,
+  IsEmail,
+  MinLength,
+} from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateTeamDto {
@@ -26,6 +34,31 @@ export class CreateTeamDto {
   })
   @IsInt()
   teamSize!: number;
+
+  @ApiProperty({
+    example: 'team.q1@example.com',
+    description: 'Login email for rescue team account',
+  })
+  @IsEmail()
+  accountEmail!: string;
+
+  @ApiProperty({
+    example: 'Team@123',
+    description: 'Login password for rescue team account',
+    minLength: 6,
+  })
+  @IsString()
+  @MinLength(6)
+  accountPassword!: string;
+
+  @ApiProperty({
+    example: 'Đội cứu hộ Quận 1',
+    description: 'Display name for rescue team account profile',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  accountFullName?: string;
 }
 
 export class UpdateTeamDto {

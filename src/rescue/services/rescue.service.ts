@@ -311,7 +311,6 @@ export class RescueService {
   }
 
   async getTeamAssignments(accountId: string, query: ListAssignmentsQueryDto) {
-    // Find team by accountId
     const team = await this.teamRepository.findOne({ where: { accountId } });
     if (!team) {
       return { data: [], meta: { total: 0, page: 1, limit: 20, pages: 0 } };
@@ -338,15 +337,16 @@ export class RescueService {
     };
   }
 
-  async respondAssignment(assignmentId: string, respondDto: RespondAssignmentDto) {
-    const assignment = await this.assignmentRepository.findOne({
-      where: { id: assignmentId },
-      relations: ['rescueRequest', 'rescueRequest.assignments'],
-    });
-
-    if (!assignment) {
-      throw new ResourceNotFoundException('Assignment', assignmentId);
-    }
+  async respondAssignment(
+    accountId: string,
+    assignmentId: string,
+    respondDto: RespondAssignmentDto,
+  ) {
+    const assignment = await this.getAssignmentForTeamAccount(accountId, assignmentId, [
+      'team',
+      'rescueRequest',
+      'rescueRequest.assignments',
+    ]);
 
     if (assignment.status !== AssignmentStatus.SENT) {
       throw new ConflictException('Can only respond to SENT assignments');
@@ -386,31 +386,33 @@ export class RescueService {
     return this.assignmentRepository.save(assignment);
   }
 
-  async updateProgress(assignmentId: string, updateDto: UpdateProgressDto) {
-    const assignment = await this.assignmentRepository.findOne({
-      where: { id: assignmentId },
-      relations: ['rescueRequest'],
-    });
-
-    if (!assignment) {
-      throw new ResourceNotFoundException('Assignment', assignmentId);
-    }
+  async updateProgress(
+    accountId: string,
+    assignmentId: string,
+    updateDto: UpdateProgressDto,
+  ) {
+    const assignment = await this.getAssignmentForTeamAccount(accountId, assignmentId, [
+      'team',
+      'rescueRequest',
+    ]);
 
     if (assignment.status !== AssignmentStatus.ACCEPTED) {
       throw new ConflictException('Can only update progress on accepted assignments');
     }
 
     const request = assignment.rescueRequest;
+    const canStartWork =
+      updateDto.status === RescueStatus.IN_PROGRESS &&
+      [RescueStatus.ASSIGNED, RescueStatus.ACCEPTED].includes(request.status);
+    const isSameInProgressUpdate =
+      request.status === RescueStatus.IN_PROGRESS &&
+      updateDto.status === RescueStatus.IN_PROGRESS;
 
-    // Auto-transition ASSIGNED → ACCEPTED when a team starts work
     if (
-      request.status === RescueStatus.ASSIGNED &&
-      updateDto.status === RescueStatus.IN_PROGRESS
+      !canStartWork &&
+      !isSameInProgressUpdate &&
+      !RescueStatusTransition.isValidTransition(request.status, updateDto.status)
     ) {
-      request.status = RescueStatus.ACCEPTED;
-    }
-
-    if (!RescueStatusTransition.isValidTransition(request.status, updateDto.status)) {
       throw new ConflictException(
         `Cannot transition to ${updateDto.status}`,
       );
@@ -423,6 +425,29 @@ export class RescueService {
 
     await this.rescueRepository.save(request);
     return this.assignmentRepository.save(assignment);
+  }
+
+  private async getAssignmentForTeamAccount(
+    accountId: string,
+    assignmentId: string,
+    relations: string[],
+  ) {
+    const team = await this.teamRepository.findOne({ where: { accountId } });
+
+    if (!team) {
+      throw new ForbiddenException('This account is not linked to any rescue team');
+    }
+
+    const assignment = await this.assignmentRepository.findOne({
+      where: { id: assignmentId, teamId: team.id },
+      relations,
+    });
+
+    if (!assignment) {
+      throw new ResourceNotFoundException('Assignment', assignmentId);
+    }
+
+    return assignment;
   }
 
   async cancelRequest(id: string, creatorId: string) {

@@ -82,8 +82,9 @@ export class EventsController {
 
   @Post(':id/volunteer-registrations')
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Register as volunteer (USER)' })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(AccountRole.USER, AccountRole.RESCUE_TEAM)
+  @ApiOperation({ summary: 'Register as volunteer (USER/RESCUE_TEAM)' })
   async registerVolunteer(
     @Param('id') id: string,
     @CurrentUser() user: any,

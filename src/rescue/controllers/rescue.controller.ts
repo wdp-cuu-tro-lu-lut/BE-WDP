@@ -267,7 +267,8 @@ export class RescueController {
 @Controller('team/assignments')
 @ApiTags('Team / Rescue Assignments')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(AccountRole.RESCUE_TEAM)
 export class TeamAssignmentController {
   constructor(private readonly rescueService: RescueService) {}
 
@@ -285,18 +286,20 @@ export class TeamAssignmentController {
   @Patch(':id/respond')
   @ApiOperation({ summary: 'Respond to assignment (RESCUE_TEAM)' })
   async respondAssignment(
+    @CurrentUser() user: any,
     @Param('id') id: string,
     @Body() respondDto: RespondAssignmentDto,
   ) {
-    return this.rescueService.respondAssignment(id, respondDto);
+    return this.rescueService.respondAssignment(user.id, id, respondDto);
   }
 
   @Patch(':id/progress')
   @ApiOperation({ summary: 'Update progress (RESCUE_TEAM)' })
   async updateProgress(
+    @CurrentUser() user: any,
     @Param('id') id: string,
     @Body() updateDto: UpdateProgressDto,
   ) {
-    return this.rescueService.updateProgress(id, updateDto);
+    return this.rescueService.updateProgress(user.id, id, updateDto);
   }
 }

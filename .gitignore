@@ -36,3 +36,9 @@ uploads/
 .cache/
 temp/
 tmp/
+
+# Local docs/tests - do not commit
+MINIO_WDP_INTEGRATION.md
+docs/PROJECT_FLOW.md
+docs/team-assignment-regression-checklist.md
+docs/warehouse-api.md
