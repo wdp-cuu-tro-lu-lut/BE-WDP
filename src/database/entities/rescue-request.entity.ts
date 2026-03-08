@@ -12,6 +12,21 @@ import {
 import { Account } from './account.entity';
 import { RescueAssignment } from './rescue-assignment.entity';
 
+const stringArrayJsonTransformer = {
+  to: (value: string[] | null) => (value == null ? null : JSON.stringify(value)),
+  from: (value: string | null) => {
+    if (!value) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(value) as string[];
+    } catch {
+      return null;
+    }
+  },
+};
+
 export enum RescueStatus {
   NEW = 'NEW',
   REVIEWED = 'REVIEWED',
@@ -73,7 +88,11 @@ export class RescueRequest {
   @Column({ type: 'text', nullable: true })
   note!: string;
 
-  @Column({ type: 'simple-json', nullable: true })
+  @Column({
+    type: 'longtext',
+    nullable: true,
+    transformer: stringArrayJsonTransformer,
+  })
   evidenceImages!: string[] | null;
 
   @Column({ type: 'int', default: 1 })

@@ -17,6 +17,12 @@ import {
   CreateAllocationDto,
   UpdateAllocationStatusDto,
   ListAllocationsQueryDto,
+  CreateRescueSupplyOrderDto,
+  ListRescueSupplyOrdersQueryDto,
+  CreateRescueReplenishmentRequestDto,
+  ReviewReplenishmentRequestDto,
+  CompleteRescueSupplyOrderDto,
+  ListWarehouseTransactionsQueryDto,
 } from '@/warehouse/dto';
 
 @Controller('warehouse')
@@ -64,6 +70,79 @@ export class WarehouseController {
     @Body() createDto: CreateAllocationDto,
   ) {
     return this.warehouseService.createAllocation(user.id, createDto);
+  }
+
+  @Post('rescue-orders')
+  @ApiOperation({ summary: 'Tạo phiếu vật phẩm cho rescue request' })
+  async createRescueSupplyOrder(
+    @CurrentUser() user: any,
+    @Body() createDto: CreateRescueSupplyOrderDto,
+  ) {
+    return this.warehouseService.createRescueSupplyOrder(user.id, createDto);
+  }
+
+  @Get('rescue-orders')
+  @ApiOperation({ summary: 'Danh sách phiếu vật phẩm cứu trợ' })
+  async listRescueSupplyOrders(@Query() query: ListRescueSupplyOrdersQueryDto) {
+    return this.warehouseService.listRescueSupplyOrders(query);
+  }
+
+  @Get('rescue-orders/:id')
+  @ApiOperation({ summary: 'Chi tiết phiếu vật phẩm cứu trợ' })
+  async getRescueSupplyOrder(@Param('id') id: string) {
+    return this.warehouseService.getRescueSupplyOrder(id);
+  }
+
+  @Post('rescue-orders/:id/check-stock')
+  @ApiOperation({ summary: 'Kiểm tra kho cho phiếu vật phẩm' })
+  async checkRescueSupplyOrderStock(@Param('id') id: string) {
+    return this.warehouseService.checkRescueSupplyOrderStock(id);
+  }
+
+  @Post('rescue-orders/:id/dispatch')
+  @ApiOperation({ summary: 'Xuất vật phẩm cho đội cứu trợ' })
+  async dispatchRescueSupplyOrder(
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+  ) {
+    return this.warehouseService.dispatchRescueSupplyOrder(id, user.id);
+  }
+
+  @Post('rescue-orders/:id/replenishment-requests')
+  @ApiOperation({ summary: 'Staff gửi yêu cầu admin bổ sung hàng cho phiếu' })
+  async createReplenishmentRequest(
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @Body() createDto: CreateRescueReplenishmentRequestDto,
+  ) {
+    return this.warehouseService.createReplenishmentRequest(id, user.id, createDto);
+  }
+
+  @Patch('replenishment-requests/:id/review')
+  @Roles(AccountRole.ADMIN)
+  @ApiOperation({ summary: 'Admin duyệt hoặc từ chối yêu cầu bổ sung hàng' })
+  async reviewReplenishmentRequest(
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @Body() reviewDto: ReviewReplenishmentRequestDto,
+  ) {
+    return this.warehouseService.reviewReplenishmentRequest(id, user.id, reviewDto);
+  }
+
+  @Post('rescue-orders/:id/complete')
+  @ApiOperation({ summary: 'Chốt phiếu cứu trợ và hoàn kho vật phẩm còn dư' })
+  async completeRescueSupplyOrder(
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @Body() completeDto: CompleteRescueSupplyOrderDto,
+  ) {
+    return this.warehouseService.completeRescueSupplyOrder(id, user.id, completeDto);
+  }
+
+  @Get('transactions')
+  @ApiOperation({ summary: 'Sổ giao dịch nhập xuất kho' })
+  async listTransactions(@Query() query: ListWarehouseTransactionsQueryDto) {
+    return this.warehouseService.listTransactions(query);
   }
 
   @Get('allocations')

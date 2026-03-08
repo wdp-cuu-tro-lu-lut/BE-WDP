@@ -9,6 +9,12 @@ import {
   Donation,
   DonationItem,
   Category,
+  RescueRequest,
+  RescueSupplyOrder,
+  RescueSupplyOrderItem,
+  ReplenishmentRequest,
+  ReplenishmentRequestItem,
+  WarehouseTransaction,
 } from '@/database/entities';
 import { WarehouseService } from '@/warehouse/services';
 import { WarehouseController } from '@/warehouse/controllers';
@@ -24,6 +30,12 @@ import { WarehouseController } from '@/warehouse/controllers';
       Donation,
       DonationItem,
       Category,
+      RescueRequest,
+      RescueSupplyOrder,
+      RescueSupplyOrderItem,
+      ReplenishmentRequest,
+      ReplenishmentRequestItem,
+      WarehouseTransaction,
     ]),
   ],
   providers: [WarehouseService],

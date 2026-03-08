@@ -6,7 +6,7 @@ import {
   UpdateDateColumn,
   DeleteDateColumn,
   OneToMany,
-  OneToOne,
+  ManyToOne,
   JoinColumn,
   Index,
 } from 'typeorm';
@@ -16,6 +16,7 @@ import { Account } from './account.entity';
 
 @Entity('teams')
 @Index(['isActive'])
+@Index(['accountId'], { unique: true })
 export class Team {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -32,7 +33,7 @@ export class Team {
   @Column({ type: 'uuid', nullable: true })
   accountId?: string; // Liên kết với tài khoản quản lý (đội trưởng)
 
-  @OneToOne(() => Account, { nullable: true })
+  @ManyToOne(() => Account, { nullable: true })
   @JoinColumn({ name: 'accountId' })
   account?: Account;
 

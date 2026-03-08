@@ -1,7 +1,24 @@
-import { IsOptional, IsArray, ValidateNested, IsInt, IsString, IsNotEmpty, IsEnum, IsUUID } from 'class-validator';
+import {
+  IsOptional,
+  IsArray,
+  ValidateNested,
+  IsInt,
+  IsString,
+  IsNotEmpty,
+  IsEnum,
+  IsUUID,
+  Min,
+  IsBoolean,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
-import { ItemCondition, AllocationStatus } from '@/database/entities';
+import {
+  AllocationStatus,
+  RescueSupplyOrderStatus,
+  WarehouseTransactionSource,
+  WarehouseTransactionType,
+} from '@/database/entities';
+import { ItemCondition } from '@/database/entities/warehouse-stock.entity';
 
 export class CreateReceiptDto {
   @ApiProperty({
@@ -134,6 +151,238 @@ export class ListAllocationsQueryDto {
     description: 'Items per page',
     default: 20,
   })
+  @IsOptional()
+  limit: number = 20;
+}
+
+export class CreateRescueSupplyOrderDto {
+  @ApiProperty({
+    example: '550e8400-e29b-41d4-a716-446655440010',
+    description: 'Rescue request ID đã được admin đánh giá và phân công',
+  })
+  @IsUUID()
+  rescueRequestId!: string;
+
+  @ApiProperty({
+    example: 12,
+    description: 'Số người thiệt hại thực tế dùng để tính phiếu',
+    required: false,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  estimatedPeople?: number;
+
+  @ApiProperty({
+    example: 'Phiếu cấp phát lần 1 cho đợt cứu trợ này',
+    description: 'Ghi chú nội bộ của staff',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  note?: string;
+}
+
+export class ListRescueSupplyOrdersQueryDto {
+  @ApiProperty({
+    example: '550e8400-e29b-41d4-a716-446655440010',
+    description: 'Lọc theo rescue request',
+    required: false,
+  })
+  @IsOptional()
+  @IsUUID()
+  rescueRequestId?: string;
+
+  @ApiProperty({
+    enum: RescueSupplyOrderStatus,
+    example: RescueSupplyOrderStatus.READY,
+    description: 'Lọc theo trạng thái phiếu vật phẩm',
+    required: false,
+  })
+  @IsOptional()
+  @IsEnum(RescueSupplyOrderStatus)
+  status?: RescueSupplyOrderStatus;
+
+  @ApiProperty({ example: 1, default: 1, required: false })
+  @IsOptional()
+  page: number = 1;
+
+  @ApiProperty({ example: 20, default: 20, required: false })
+  @IsOptional()
+  limit: number = 20;
+}
+
+export class CreateRescueReplenishmentRequestDto {
+  @ApiProperty({
+    example: 'Kho đang thiếu 8 nước uống và 2 bộ y tế, đề nghị bổ sung gấp',
+    description: 'Ghi chú staff gửi admin',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  note?: string;
+}
+
+export class ReviewReplenishmentRequestItemDto {
+  @ApiProperty({
+    example: '550e8400-e29b-41d4-a716-446655440011',
+    description: 'ID item của yêu cầu bổ sung',
+  })
+  @IsUUID()
+  itemId!: string;
+
+  @ApiProperty({
+    example: 8,
+    description: 'Số lượng admin duyệt nhập thêm',
+    required: false,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  approvedQuantity?: number;
+
+  @ApiProperty({
+    enum: ItemCondition,
+    example: ItemCondition.EXCELLENT,
+    description: 'Condition của hàng nhập bổ sung',
+    required: false,
+  })
+  @IsOptional()
+  @IsEnum(ItemCondition)
+  condition?: ItemCondition;
+}
+
+export class ReviewReplenishmentRequestDto {
+  @ApiProperty({
+    example: true,
+    description: 'true = admin duyệt, false = từ chối',
+  })
+  @IsBoolean()
+  approved!: boolean;
+
+  @ApiProperty({
+    example: 'Đã duyệt nhập thêm từ kho dự phòng',
+    description: 'Ghi chú phê duyệt / từ chối',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  decisionNote?: string;
+
+  @ApiProperty({
+    type: ReviewReplenishmentRequestItemDto,
+    isArray: true,
+    required: false,
+    description: 'Cho phép admin điều chỉnh số lượng/condition từng item',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ReviewReplenishmentRequestItemDto)
+  items?: ReviewReplenishmentRequestItemDto[];
+}
+
+export class CompleteRescueSupplyOrderItemDto {
+  @ApiProperty({
+    example: '550e8400-e29b-41d4-a716-446655440012',
+    description: 'ID item của phiếu vật phẩm',
+  })
+  @IsUUID()
+  orderItemId!: string;
+
+  @ApiProperty({
+    example: 3,
+    description: 'Số lượng vật phẩm còn dư trả lại kho',
+  })
+  @IsInt()
+  @Min(0)
+  returnedQuantity!: number;
+
+  @ApiProperty({
+    enum: ItemCondition,
+    example: ItemCondition.GOOD,
+    description: 'Condition hàng hoàn kho',
+    required: false,
+  })
+  @IsOptional()
+  @IsEnum(ItemCondition)
+  condition?: ItemCondition;
+}
+
+export class CompleteRescueSupplyOrderDto {
+  @ApiProperty({
+    example: 'Hoàn tất cứu trợ, còn dư 3 thùng nước hoàn kho',
+    description: 'Ghi chú chốt phiếu',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  note?: string;
+
+  @ApiProperty({
+    type: CompleteRescueSupplyOrderItemDto,
+    isArray: true,
+    required: false,
+    description: 'Danh sách vật phẩm hoàn kho nếu còn dư',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CompleteRescueSupplyOrderItemDto)
+  items?: CompleteRescueSupplyOrderItemDto[];
+}
+
+export class ListWarehouseTransactionsQueryDto {
+  @ApiProperty({
+    enum: WarehouseTransactionSource,
+    example: WarehouseTransactionSource.RESCUE_DISPATCH,
+    required: false,
+  })
+  @IsOptional()
+  @IsEnum(WarehouseTransactionSource)
+  source?: WarehouseTransactionSource;
+
+  @ApiProperty({
+    enum: WarehouseTransactionType,
+    example: WarehouseTransactionType.OUT,
+    required: false,
+  })
+  @IsOptional()
+  @IsEnum(WarehouseTransactionType)
+  type?: WarehouseTransactionType;
+
+  @ApiProperty({
+    example: '550e8400-e29b-41d4-a716-446655440013',
+    required: false,
+    description: 'Lọc theo category',
+  })
+  @IsOptional()
+  @IsUUID()
+  categoryId?: string;
+
+  @ApiProperty({
+    example: '2026-03-01',
+    required: false,
+    description: 'Lọc từ ngày',
+  })
+  @IsOptional()
+  @IsString()
+  from?: string;
+
+  @ApiProperty({
+    example: '2026-03-31',
+    required: false,
+    description: 'Lọc đến ngày',
+  })
+  @IsOptional()
+  @IsString()
+  to?: string;
+
+  @ApiProperty({ example: 1, default: 1, required: false })
+  @IsOptional()
+  page: number = 1;
+
+  @ApiProperty({ example: 20, default: 20, required: false })
   @IsOptional()
   limit: number = 20;
 }
