@@ -4,9 +4,10 @@ import { Account, Profile, Verification } from '@/database/entities';
 import { AccountsService } from '@/accounts/services';
 import { AccountsController } from '@/accounts/controllers';
 import { CommonModule } from '@/common/common.module';
+import { FilesModule } from '@/files/files.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Account, Profile, Verification]), CommonModule],
+  imports: [TypeOrmModule.forFeature([Account, Profile, Verification]), CommonModule, FilesModule],
   providers: [AccountsService],
   controllers: [AccountsController],
   exports: [AccountsService],
