@@ -215,6 +215,8 @@ export class RescueService {
               assignmentId: a.id,
               teamId: a.teamId,
               teamName: a.team?.name ?? null,
+              area: a.team?.area ?? null,
+              teamSize: a.team?.teamSize ?? 0,
               status: a.status,
               respondedAt: a.respondedAt,
             }))

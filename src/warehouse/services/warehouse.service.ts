@@ -234,14 +234,24 @@ export class WarehouseService {
   async getReceipt(id: string) {
     const receipt = await this.receiptRepository.findOne({
       where: { id },
-      relations: ['items', 'donation', 'createdBy'],
+      relations: [
+        'items',
+        'items.category',
+        'donation',
+        'donation.creator',
+        'donation.creator.profile',
+        'donation.items',
+        'donation.items.category',
+        'createdBy',
+        'createdBy.profile',
+      ],
     });
 
     if (!receipt) {
       throw new ResourceNotFoundException('Receipt', id);
     }
 
-    return receipt;
+    return this.serializeReceipt(receipt);
   }
 
   async listReceipts(page = 1, limit = 20) {
@@ -249,16 +259,97 @@ export class WarehouseService {
       .createQueryBuilder('receipt')
       .leftJoinAndSelect('receipt.items', 'items')
       .leftJoinAndSelect('items.category', 'category')
-      .leftJoinAndSelect('receipt.donation', 'donation');
+      .leftJoinAndSelect('receipt.donation', 'donation')
+      .leftJoinAndSelect('donation.creator', 'donationCreator')
+      .leftJoinAndSelect('donationCreator.profile', 'donationCreatorProfile')
+      .leftJoinAndSelect('donation.items', 'donationItems')
+      .leftJoinAndSelect('donationItems.category', 'donationItemCategory')
+      .leftJoinAndSelect('receipt.createdBy', 'createdBy')
+      .leftJoinAndSelect('createdBy.profile', 'createdByProfile');
 
     const total = await qb.getCount();
     const skip = (page - 1) * limit;
-    const receipts = await qb.skip(skip).take(limit).getMany();
+    const receipts = await qb
+      .orderBy('receipt.createdAt', 'DESC')
+      .skip(skip)
+      .take(limit)
+      .getMany();
 
     return {
-      data: receipts,
+      data: receipts.map((receipt) => this.serializeReceipt(receipt)),
       meta: { total, page, limit, pages: Math.ceil(total / limit) },
     };
+  }
+
+  private serializeReceipt(receipt: WarehouseReceipt) {
+    const donor = receipt.donation?.creator;
+    const donationItems = [...(receipt.donation?.items ?? [])];
+
+    const items = (receipt.items ?? []).map((item) => {
+      const matchedDonationItem = this.matchDonationItemForReceiptItem(
+        item,
+        donationItems,
+      );
+
+      return {
+        ...item,
+        donationItemId: matchedDonationItem?.id ?? null,
+        name: matchedDonationItem?.name ?? null,
+        productName: matchedDonationItem?.name ?? null,
+        unit: matchedDonationItem?.unit ?? null,
+        categoryName:
+          item.category?.name ?? matchedDonationItem?.category?.name ?? null,
+      };
+    });
+
+    return {
+      ...receipt,
+      donor: donor
+        ? {
+            id: donor.id,
+            fullName: donor.profile?.fullName ?? null,
+            email: donor.email ?? null,
+            phone: donor.phone ?? null,
+          }
+        : null,
+      items,
+    };
+  }
+
+  private matchDonationItemForReceiptItem(
+    receiptItem: WarehouseReceiptItem,
+    donationItems: DonationItem[],
+  ) {
+    const exactIndex = donationItems.findIndex(
+      (item) =>
+        item.categoryId === receiptItem.categoryId &&
+        item.condition === receiptItem.condition &&
+        item.quantity === receiptItem.quantity,
+    );
+
+    if (exactIndex >= 0) {
+      return donationItems.splice(exactIndex, 1)[0];
+    }
+
+    const sameConditionIndex = donationItems.findIndex(
+      (item) =>
+        item.categoryId === receiptItem.categoryId &&
+        item.condition === receiptItem.condition,
+    );
+
+    if (sameConditionIndex >= 0) {
+      return donationItems.splice(sameConditionIndex, 1)[0];
+    }
+
+    const sameCategoryIndex = donationItems.findIndex(
+      (item) => item.categoryId === receiptItem.categoryId,
+    );
+
+    if (sameCategoryIndex >= 0) {
+      return donationItems.splice(sameCategoryIndex, 1)[0];
+    }
+
+    return null;
   }
 
   async createAllocation(createdById: string, createDto: CreateAllocationDto) {

@@ -2,7 +2,17 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
-import { Account, AccountRole, Profile, Team } from '@/database/entities';
+import {
+  Account,
+  AccountRole,
+  Allocation,
+  AllocationStatus,
+  AssignmentStatus,
+  Profile,
+  RescueAssignment,
+  RescueStatus,
+  Team,
+} from '@/database/entities';
 import {
   CreateTeamDto,
   UpdateTeamDto,
@@ -22,6 +32,10 @@ export class TeamsService {
     private accountRepository: Repository<Account>,
     @InjectRepository(Profile)
     private profileRepository: Repository<Profile>,
+    @InjectRepository(RescueAssignment)
+    private assignmentRepository: Repository<RescueAssignment>,
+    @InjectRepository(Allocation)
+    private allocationRepository: Repository<Allocation>,
     private dataSource: DataSource,
   ) {}
 
@@ -84,7 +98,20 @@ export class TeamsService {
     if (!team) {
       throw new ResourceNotFoundException('Team', id);
     }
-    return this.toTeamResponse(team);
+
+    const [assignments, allocations] = await Promise.all([
+      this.assignmentRepository.find({
+        where: { teamId: team.id },
+        relations: ['rescueRequest'],
+        order: { createdAt: 'DESC' },
+      }),
+      this.allocationRepository.find({
+        where: { teamId: team.id },
+        order: { createdAt: 'DESC' },
+      }),
+    ]);
+
+    return this.toTeamDetailResponse(team, assignments, allocations);
   }
 
   async listTeams(query: ListTeamsQueryDto) {
@@ -224,6 +251,140 @@ export class TeamsService {
             fullName: team.account.profile?.fullName,
           }
         : null,
+    };
+  }
+
+  private toTeamDetailResponse(
+    team: Team,
+    assignments: RescueAssignment[],
+    allocations: Allocation[],
+  ) {
+    const acceptedAssignments = assignments.filter(
+      (assignment) => assignment.status === AssignmentStatus.ACCEPTED,
+    );
+
+    const successfulMissionStatuses = [RescueStatus.DONE];
+    const failedMissionStatuses = [
+      RescueStatus.CANCELED,
+      RescueStatus.REJECTED,
+    ];
+
+    const successfulMissions = acceptedAssignments.filter((assignment) =>
+      successfulMissionStatuses.includes(assignment.rescueRequest?.status),
+    ).length;
+
+    const failedMissions = acceptedAssignments.filter((assignment) =>
+      failedMissionStatuses.includes(assignment.rescueRequest?.status),
+    ).length;
+
+    const respondedAssignments = acceptedAssignments.filter(
+      (assignment) => assignment.respondedAt,
+    );
+
+    const averageResponseTime = respondedAssignments.length
+      ? Math.round(
+          respondedAssignments.reduce((total, assignment) => {
+            const respondedAt = assignment.respondedAt.getTime();
+            const createdAt = assignment.createdAt.getTime();
+            return total + Math.max(0, respondedAt - createdAt);
+          }, 0) /
+            respondedAssignments.length /
+            60000,
+        )
+      : null;
+
+    const lastMissionAt = acceptedAssignments.reduce<Date | null>(
+      (latest, assignment) => {
+        const candidate = assignment.respondedAt ?? assignment.updatedAt;
+        if (!candidate) {
+          return latest;
+        }
+
+        if (!latest || candidate > latest) {
+          return candidate;
+        }
+
+        return latest;
+      },
+      null,
+    );
+
+    const hasMissionInProgress = acceptedAssignments.some((assignment) =>
+      [RescueStatus.ACCEPTED, RescueStatus.IN_PROGRESS].includes(
+        assignment.rescueRequest?.status,
+      ),
+    );
+
+    const hasPendingWork =
+      assignments.some((assignment) => assignment.status === AssignmentStatus.SENT) ||
+      allocations.some((allocation) =>
+        [AllocationStatus.CREATED, AllocationStatus.DISPATCHED].includes(
+          allocation.status,
+        ),
+      );
+
+    const status = !team.isActive
+      ? 'offline'
+      : hasMissionInProgress
+        ? 'on_mission'
+        : hasPendingWork
+          ? 'busy'
+          : 'available';
+
+    const members = team.account
+      ? [
+          {
+            member_id: team.account.id,
+            full_name: team.account.profile?.fullName ?? team.name,
+            role: 'team_leader',
+            phone: team.account.phone ?? '',
+            status: team.account.isActive ? 'active' : 'on_leave',
+          },
+        ]
+      : [];
+
+    const vehicles: Array<{
+      vehicle_id: string;
+      vehicle_type: string;
+      plate_number: string;
+      capacity: number;
+      status: string;
+    }> = [];
+    const equipmentList: Array<{
+      equipment_id: string;
+      equipment_name: string;
+      quantity: number;
+      status: string;
+    }> = [];
+
+    return {
+      ...this.toTeamResponse(team),
+      team_id: team.id,
+      team_code: null,
+      created_at: team.createdAt,
+      team_name: team.name,
+      status,
+      location: {
+        lat: null,
+        lng: null,
+        base_location: team.account?.profile?.address ?? null,
+        coverage_area: team.area ?? team.account?.profile?.address ?? null,
+      },
+      capacity: {
+        max_victims: team.teamSize > 0 ? team.teamSize * 4 : null,
+        vehicles: vehicles.length,
+      },
+      specialties: [],
+      members,
+      totalMembers: team.teamSize,
+      rating: null,
+      equipment_list: equipmentList,
+      vehicles,
+      total_missions: acceptedAssignments.length,
+      successful_missions: successfulMissions,
+      failed_missions: failedMissions,
+      average_response_time: averageResponseTime,
+      last_mission_at: lastMissionAt,
     };
   }
 }
