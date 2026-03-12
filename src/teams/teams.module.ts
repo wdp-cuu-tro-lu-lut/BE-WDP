@@ -6,6 +6,11 @@ import {
   Profile,
   RescueAssignment,
   Team,
+  TeamEquipment,
+  TeamMember,
+  TeamSpecialty,
+  TeamVehicle,
+  VehicleType,
 } from '@/database/entities';
 import { TeamsService } from '@/teams/services';
 import { TeamsController } from '@/teams/controllers';
@@ -18,6 +23,11 @@ import { TeamsController } from '@/teams/controllers';
       Profile,
       RescueAssignment,
       Allocation,
+      TeamMember,
+      TeamSpecialty,
+      TeamEquipment,
+      TeamVehicle,
+      VehicleType,
     ]),
   ],
   providers: [TeamsService],

@@ -4,6 +4,9 @@ import {
   Account,
   Profile,
   Team,
+  TeamMember,
+  TeamMemberRole,
+  TeamMemberStatus,
   AccountRole,
   Event,
   EventType,
@@ -28,6 +31,7 @@ async function seed() {
   const accountRepository = AppDataSource.getRepository(Account);
   const profileRepository = AppDataSource.getRepository(Profile);
   const teamRepository = AppDataSource.getRepository(Team);
+  const teamMemberRepository = AppDataSource.getRepository(TeamMember);
   const eventRepository = AppDataSource.getRepository(Event);
   const donationRepository = AppDataSource.getRepository(Donation);
   const donationItemRepository = AppDataSource.getRepository(DonationItem);
@@ -83,6 +87,9 @@ async function seed() {
 
   // Check if team account already exists
   let savedTeamAccount = await accountRepository.findOne({ where: { email: 'team@example.com' } });
+  let savedTeam = savedTeamAccount
+    ? await teamRepository.findOne({ where: { accountId: savedTeamAccount.id } })
+    : null;
   
   if (!savedTeamAccount) {
     const teamPasswordHash = await bcrypt.hash('team123', 10);
@@ -103,12 +110,112 @@ async function seed() {
     team.name = 'Alpha Rescue Team';
     team.accountId = savedTeamAccount.id;
     team.area = 'District 1, City';
-    team.teamSize = 10;
+    team.teamSize = 4;
     team.isActive = true;
-    await teamRepository.save(team);
+    savedTeam = await teamRepository.save(team);
     console.log('✓ Created Rescue Team account');
   } else {
     console.log('→ Rescue Team account already exists');
+  }
+
+  if (!savedTeam) {
+    savedTeam = await teamRepository.findOne({ where: { accountId: savedTeamAccount.id } });
+  }
+
+  if (savedTeamAccount && savedTeam) {
+    let leaderMembership = await teamMemberRepository.findOne({
+      where: { accountId: savedTeamAccount.id },
+    });
+
+    if (!leaderMembership) {
+      leaderMembership = teamMemberRepository.create({
+        teamId: savedTeam.id,
+        accountId: savedTeamAccount.id,
+        role: TeamMemberRole.TEAM_LEADER,
+        status: TeamMemberStatus.ACTIVE,
+        joinedAt: savedTeam.createdAt,
+      });
+      await teamMemberRepository.save(leaderMembership);
+      console.log('✓ Created team leader membership');
+    } else {
+      console.log('→ Team leader membership already exists');
+    }
+
+    const sampleMembers = [
+      {
+        email: 'alpha.member1@example.com',
+        password: 'member123',
+        fullName: 'Tran Van B',
+        phone: '0909000001',
+        address: '12 Le Loi, Quan 1, TP.HCM',
+        role: TeamMemberRole.MEMBER,
+        status: TeamMemberStatus.ACTIVE,
+      },
+      {
+        email: 'alpha.member2@example.com',
+        password: 'member123',
+        fullName: 'Le Thi C',
+        phone: '0909000002',
+        address: '25 Nguyen Hue, Quan 1, TP.HCM',
+        role: TeamMemberRole.MEMBER,
+        status: TeamMemberStatus.ACTIVE,
+      },
+      {
+        email: 'alpha.member3@example.com',
+        password: 'member123',
+        fullName: 'Pham Van D',
+        phone: '0909000003',
+        address: '90 Hai Ba Trung, Quan 3, TP.HCM',
+        role: TeamMemberRole.MEMBER,
+        status: TeamMemberStatus.ON_LEAVE,
+      },
+    ];
+
+    for (const member of sampleMembers) {
+      let memberAccount = await accountRepository.findOne({ where: { email: member.email } });
+
+      if (!memberAccount) {
+        memberAccount = accountRepository.create({
+          email: member.email,
+          phone: member.phone,
+          passwordHash: await bcrypt.hash(member.password, 10),
+          role: AccountRole.RESCUE_TEAM,
+          isActive: true,
+        });
+        memberAccount = await accountRepository.save(memberAccount);
+
+        const memberProfile = profileRepository.create({
+          accountId: memberAccount.id,
+          fullName: member.fullName,
+          address: member.address,
+        });
+        await profileRepository.save(memberProfile);
+        console.log(`✓ Created sample team member account: ${member.email}`);
+      } else {
+        console.log(`→ Sample team member account already exists: ${member.email}`);
+      }
+
+      const membership = await teamMemberRepository.findOne({
+        where: { accountId: memberAccount.id },
+      });
+
+      if (!membership) {
+        await teamMemberRepository.save(
+          teamMemberRepository.create({
+            teamId: savedTeam.id,
+            accountId: memberAccount.id,
+            role: member.role,
+            status: member.status,
+          }),
+        );
+        console.log(`✓ Added sample team member to team: ${member.email}`);
+      } else {
+        console.log(`→ Sample team member already assigned: ${member.email}`);
+      }
+    }
+
+    savedTeam.teamSize = 4;
+    await teamRepository.save(savedTeam);
   }
 
   // Check if user already exists

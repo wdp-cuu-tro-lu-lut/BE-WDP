@@ -13,6 +13,10 @@ import {
 import { RescueAssignment } from './rescue-assignment.entity';
 import { Allocation } from './allocation.entity';
 import { Account } from './account.entity';
+import { TeamEquipment } from './team-equipment.entity';
+import { TeamMember } from './team-member.entity';
+import { TeamSpecialty } from './team-specialty.entity';
+import { TeamVehicle } from './team-vehicle.entity';
 
 @Entity('teams')
 @Index(['isActive'])
@@ -29,6 +33,18 @@ export class Team {
 
   @Column({ type: 'int', default: 0 })
   teamSize!: number;
+
+  @Column({ type: 'text', nullable: true })
+  baseLocation!: string | null;
+
+  @Column({ type: 'decimal', precision: 10, scale: 8, nullable: true })
+  latitude!: number | null;
+
+  @Column({ type: 'decimal', precision: 11, scale: 8, nullable: true })
+  longitude!: number | null;
+
+  @Column({ type: 'decimal', precision: 3, scale: 2, nullable: true })
+  rating!: number | null;
 
   @Column({ type: 'uuid', nullable: true })
   accountId?: string; // Liên kết với tài khoản quản lý (đội trưởng)
@@ -52,4 +68,22 @@ export class Team {
 
   @OneToMany(() => Allocation, (a) => a.team)
   allocations!: Allocation[];
+
+  @OneToMany(() => TeamSpecialty, (specialty) => specialty.team, {
+    cascade: true,
+  })
+  specialties!: TeamSpecialty[];
+
+  @OneToMany(() => TeamEquipment, (equipment) => equipment.team, {
+    cascade: true,
+  })
+  equipment!: TeamEquipment[];
+
+  @OneToMany(() => TeamVehicle, (vehicle) => vehicle.team, {
+    cascade: true,
+  })
+  vehicles!: TeamVehicle[];
+
+  @OneToMany(() => TeamMember, (teamMember) => teamMember.team)
+  teamMembers!: TeamMember[];
 }

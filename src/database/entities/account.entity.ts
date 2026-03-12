@@ -13,6 +13,7 @@ import { Profile } from './profile.entity';
 import { RefreshToken } from './refresh-token.entity';
 import { RescueRequest } from './rescue-request.entity';
 import { RescueAssignment } from './rescue-assignment.entity';
+import { TeamMember } from './team-member.entity';
 import { VolunteerRegistration } from './volunteer-registration.entity';
 import { Donation } from './donation.entity';
 import { WarehouseReceipt } from './warehouse-receipt.entity';
@@ -83,4 +84,7 @@ export class Account {
 
   @OneToMany(() => Allocation, (a) => a.createdBy)
   allocations!: Allocation[];
+
+  @OneToMany(() => TeamMember, (teamMember) => teamMember.account)
+  teamMemberships!: TeamMember[];
 }

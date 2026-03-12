@@ -7,6 +7,7 @@ import {
   RescueStatus,
   AssignmentStatus,
   Team,
+  TeamMember,
   AccountRole,
 } from '@/database/entities';
 import {
@@ -39,6 +40,8 @@ export class RescueService {
     private assignmentRepository: Repository<RescueAssignment>,
     @InjectRepository(Team)
     private teamRepository: Repository<Team>,
+    @InjectRepository(TeamMember)
+    private teamMemberRepository: Repository<TeamMember>,
   ) {}
 
   async createRequest(creatorId: string, createDto: CreateRescueRequestDto) {
@@ -313,7 +316,7 @@ export class RescueService {
   }
 
   async getTeamAssignments(accountId: string, query: ListAssignmentsQueryDto) {
-    const team = await this.teamRepository.findOne({ where: { accountId } });
+    const team = await this.resolveTeamForAccount(accountId);
     if (!team) {
       return { data: [], meta: { total: 0, page: 1, limit: 20, pages: 0 } };
     }
@@ -434,7 +437,7 @@ export class RescueService {
     assignmentId: string,
     relations: string[],
   ) {
-    const team = await this.teamRepository.findOne({ where: { accountId } });
+    const team = await this.resolveTeamForAccount(accountId);
 
     if (!team) {
       throw new ForbiddenException('This account is not linked to any rescue team');
@@ -450,6 +453,19 @@ export class RescueService {
     }
 
     return assignment;
+  }
+
+  private async resolveTeamForAccount(accountId: string) {
+    const membership = await this.teamMemberRepository.findOne({
+      where: { accountId },
+      relations: ['team'],
+    });
+
+    if (membership?.team) {
+      return membership.team;
+    }
+
+    return this.teamRepository.findOne({ where: { accountId } });
   }
 
   async cancelRequest(id: string, creatorId: string) {

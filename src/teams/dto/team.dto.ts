@@ -1,4 +1,6 @@
 import {
+  ArrayUnique,
+  IsArray,
   IsOptional,
   IsInt,
   IsBoolean,
@@ -6,8 +8,221 @@ import {
   IsNotEmpty,
   IsEmail,
   MinLength,
+  IsNumber,
+  Max,
+  Min,
+  IsEnum,
+  ValidateNested,
 } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
+import {
+  TeamEquipmentStatus,
+  TeamMemberRole,
+  TeamMemberStatus,
+  TeamVehicleStatus,
+} from '@/database/entities';
+
+export class VehicleTypeResponseDto {
+  @ApiProperty({ example: 'xe_cuu_thuong' })
+  code!: string;
+
+  @ApiProperty({ example: 'Xe cứu thương' })
+  name!: string;
+
+  @ApiPropertyOptional({ example: 'Xe chuyên dụng để sơ cứu và vận chuyển nạn nhân' })
+  description?: string | null;
+
+  @ApiProperty({ example: 4 })
+  defaultCapacity!: number;
+}
+
+export class TeamEquipmentDto {
+  @ApiProperty({
+    example: 'Bộ sơ cứu',
+    description: 'Equipment name',
+  })
+  @IsString()
+  @IsNotEmpty()
+  equipmentName!: string;
+
+  @ApiProperty({
+    example: 10,
+    description: 'Equipment quantity',
+    type: 'integer',
+  })
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  quantity!: number;
+
+  @ApiPropertyOptional({
+    enum: TeamEquipmentStatus,
+    example: TeamEquipmentStatus.READY,
+    description: 'Equipment status',
+  })
+  @IsOptional()
+  @IsEnum(TeamEquipmentStatus)
+  status?: TeamEquipmentStatus;
+}
+
+export class TeamVehicleDto {
+  @ApiProperty({
+    example: 'xe_cuu_thuong',
+    description: 'Vehicle type code from vehicle master table',
+  })
+  @IsString()
+  @IsNotEmpty()
+  vehicleTypeCode!: string;
+
+  @ApiProperty({
+    example: '51A-12345',
+    description: 'Vehicle plate number',
+  })
+  @IsString()
+  @IsNotEmpty()
+  plateNumber!: string;
+
+  @ApiProperty({
+    example: 4,
+    description: 'Vehicle capacity',
+    type: 'integer',
+  })
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  capacity!: number;
+
+  @ApiPropertyOptional({
+    enum: TeamVehicleStatus,
+    example: TeamVehicleStatus.READY,
+    description: 'Vehicle status',
+  })
+  @IsOptional()
+  @IsEnum(TeamVehicleStatus)
+  status?: TeamVehicleStatus;
+}
+
+export class CreateTeamMemberDto {
+  @ApiProperty({
+    example: 'alpha.member1@example.com',
+    description: 'Login email for the team member account',
+  })
+  @IsEmail()
+  email!: string;
+
+  @ApiProperty({
+    example: 'Member@123',
+    description: 'Login password for the team member account',
+    minLength: 6,
+  })
+  @IsString()
+  @MinLength(6)
+  password!: string;
+
+  @ApiProperty({
+    example: 'Nguyen Van B',
+    description: 'Display name of the team member',
+  })
+  @IsString()
+  @IsNotEmpty()
+  fullName!: string;
+
+  @ApiPropertyOptional({
+    example: '0909123456',
+    description: 'Phone number of the team member',
+  })
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
+  @ApiPropertyOptional({
+    example: '45 Le Loi, Quan 1, TP.HCM',
+    description: 'Address of the team member',
+  })
+  @IsOptional()
+  @IsString()
+  address?: string;
+
+  @ApiPropertyOptional({
+    enum: TeamMemberRole,
+    example: TeamMemberRole.MEMBER,
+    description: 'Role of the member inside the team',
+  })
+  @IsOptional()
+  @IsEnum(TeamMemberRole)
+  role?: TeamMemberRole;
+
+  @ApiPropertyOptional({
+    enum: TeamMemberStatus,
+    example: TeamMemberStatus.ACTIVE,
+    description: 'Membership status inside the team',
+  })
+  @IsOptional()
+  @IsEnum(TeamMemberStatus)
+  status?: TeamMemberStatus;
+
+  @ApiPropertyOptional({
+    example: true,
+    description: 'Whether the login account should be active',
+  })
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+}
+
+export class UpdateTeamMemberDto {
+  @ApiPropertyOptional({
+    example: 'Nguyen Van B',
+    description: 'Display name of the team member',
+  })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  fullName?: string;
+
+  @ApiPropertyOptional({
+    example: '0909123456',
+    description: 'Phone number of the team member',
+  })
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
+  @ApiPropertyOptional({
+    example: '45 Le Loi, Quan 1, TP.HCM',
+    description: 'Address of the team member',
+  })
+  @IsOptional()
+  @IsString()
+  address?: string;
+
+  @ApiPropertyOptional({
+    enum: TeamMemberRole,
+    example: TeamMemberRole.MEMBER,
+    description: 'Role of the member inside the team',
+  })
+  @IsOptional()
+  @IsEnum(TeamMemberRole)
+  role?: TeamMemberRole;
+
+  @ApiPropertyOptional({
+    enum: TeamMemberStatus,
+    example: TeamMemberStatus.ON_LEAVE,
+    description: 'Membership status inside the team',
+  })
+  @IsOptional()
+  @IsEnum(TeamMemberStatus)
+  status?: TeamMemberStatus;
+
+  @ApiPropertyOptional({
+    example: true,
+    description: 'Whether the login account should be active',
+  })
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+}
 
 export class CreateTeamDto {
   @ApiProperty({
@@ -32,8 +247,77 @@ export class CreateTeamDto {
     description: 'Number of team members',
     type: 'integer',
   })
+  @Type(() => Number)
   @IsInt()
   teamSize!: number;
+
+  @ApiPropertyOptional({
+    example: 'Kho vận Quận 1, TP.HCM',
+    description: 'Base location of the rescue team',
+  })
+  @IsOptional()
+  @IsString()
+  baseLocation?: string;
+
+  @ApiPropertyOptional({
+    example: 10.7769,
+    description: 'Latitude of the rescue team base',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  latitude?: number;
+
+  @ApiPropertyOptional({
+    example: 106.7009,
+    description: 'Longitude of the rescue team base',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  longitude?: number;
+
+  @ApiPropertyOptional({
+    example: 4.8,
+    description: 'Team rating from 0 to 5',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @Max(5)
+  rating?: number;
+
+  @ApiPropertyOptional({
+    type: [String],
+    example: ['first_aid', 'trauma_care'],
+    description: 'Team specialties',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsString({ each: true })
+  specialties?: string[];
+
+  @ApiPropertyOptional({
+    type: [TeamEquipmentDto],
+    description: 'Equipment list of the rescue team',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => TeamEquipmentDto)
+  equipmentList?: TeamEquipmentDto[];
+
+  @ApiPropertyOptional({
+    type: [TeamVehicleDto],
+    description: 'Vehicle list of the rescue team',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => TeamVehicleDto)
+  vehicles?: TeamVehicleDto[];
 
   @ApiProperty({
     example: 'team.q1@example.com',
@@ -87,8 +371,77 @@ export class UpdateTeamDto {
     required: false,
   })
   @IsOptional()
+  @Type(() => Number)
   @IsInt()
   teamSize?: number;
+
+  @ApiPropertyOptional({
+    example: 'Kho vận Quận 1, TP.HCM',
+    description: 'Base location of the rescue team',
+  })
+  @IsOptional()
+  @IsString()
+  baseLocation?: string;
+
+  @ApiPropertyOptional({
+    example: 10.7769,
+    description: 'Latitude of the rescue team base',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  latitude?: number;
+
+  @ApiPropertyOptional({
+    example: 106.7009,
+    description: 'Longitude of the rescue team base',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  longitude?: number;
+
+  @ApiPropertyOptional({
+    example: 4.8,
+    description: 'Team rating from 0 to 5',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @Max(5)
+  rating?: number;
+
+  @ApiPropertyOptional({
+    type: [String],
+    example: ['first_aid', 'trauma_care'],
+    description: 'Team specialties',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsString({ each: true })
+  specialties?: string[];
+
+  @ApiPropertyOptional({
+    type: [TeamEquipmentDto],
+    description: 'Equipment list of the rescue team',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => TeamEquipmentDto)
+  equipmentList?: TeamEquipmentDto[];
+
+  @ApiPropertyOptional({
+    type: [TeamVehicleDto],
+    description: 'Vehicle list of the rescue team',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => TeamVehicleDto)
+  vehicles?: TeamVehicleDto[];
 
   @ApiProperty({
     example: true,
