@@ -22,6 +22,7 @@ import {
   CreateRescueRequestDto,
   CreateGuestRescueRequestDto,
   ClaimRescueRequestDto,
+  CreateTeamReviewDto,
   ReviewRescueRequestDto,
   CreateRescueAssignmentDto,
   RespondAssignmentDto,
@@ -162,6 +163,54 @@ export class RescueController {
   @ApiOperation({ summary: 'Get rescue request by ID' })
   async getRequest(@Param('id') id: string) {
     return this.rescueService.getRequest(id);
+  }
+
+  @Get(':id/reviews')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(AccountRole.USER, AccountRole.ADMIN, AccountRole.STAFF)
+  @ApiOperation({ summary: 'List team reviews for a rescue request' })
+  async listTeamReviews(
+    @Param('id') id: string,
+    @CurrentUser() user: any,
+  ) {
+    return this.rescueService.listTeamReviews(id, user);
+  }
+
+  @Post(':id/reviews')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(AccountRole.USER)
+  @ApiOperation({
+    summary: 'Create a team review after the rescue request is completed or fails',
+  })
+  @ApiBody({
+    type: CreateTeamReviewDto,
+    examples: {
+      success: {
+        summary: 'Rate the team after successful rescue',
+        value: {
+          teamId: 'b17fafda-f496-4226-9d86-7640b58e9208',
+          rating: 5,
+          comment: 'Đội đến nhanh và hỗ trợ rất tận tình.',
+        },
+      },
+      failed: {
+        summary: 'Rate the team after an unsuccessful rescue attempt',
+        value: {
+          teamId: 'b17fafda-f496-4226-9d86-7640b58e9208',
+          rating: 2,
+          comment: 'Đội có liên hệ nhưng không thể tiếp cận hiện trường kịp thời.',
+        },
+      },
+    },
+  })
+  async createTeamReview(
+    @Param('id') id: string,
+    @CurrentUser() user: any,
+    @Body() createTeamReviewDto: CreateTeamReviewDto,
+  ) {
+    return this.rescueService.createTeamReview(id, user.id, createTeamReviewDto);
   }
 
   @Patch(':id/cancel')

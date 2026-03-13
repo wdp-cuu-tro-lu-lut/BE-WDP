@@ -1,6 +1,6 @@
-import { IsOptional, IsEnum, IsNumber, IsString, IsNotEmpty, IsArray, IsUUID, ArrayNotEmpty, MaxLength, Min, IsInt, ArrayMaxSize } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
-import { RescuePriority, RescueStatus, AssignmentStatus } from '@/database/entities';
+import { IsOptional, IsEnum, IsNumber, IsString, IsNotEmpty, IsArray, IsUUID, ArrayNotEmpty, MaxLength, Min, IsInt, ArrayMaxSize, Max } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { RescuePriority, RescueStatus, AssignmentStatus, TeamReviewOutcome } from '@/database/entities';
 
 export class CreateRescueRequestDto {
   @ApiProperty({
@@ -371,4 +371,59 @@ export class ListAssignmentsQueryDto {
   })
   @IsOptional()
   limit: number = 20;
+}
+
+export class CreateTeamReviewDto {
+  @ApiProperty({
+    example: 'b17fafda-f496-4226-9d86-7640b58e9208',
+    description: 'Team ID that handled or attempted this rescue request',
+  })
+  @IsUUID('4')
+  teamId!: string;
+
+  @ApiProperty({
+    example: 5,
+    description: 'Rating score from 1 to 5',
+    minimum: 1,
+    maximum: 5,
+  })
+  @IsInt()
+  @Min(1)
+  @Max(5)
+  rating!: number;
+
+  @ApiPropertyOptional({
+    example: 'Đội đến nhanh và hỗ trợ rất tận tình.',
+    description: 'User feedback for the team',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  comment?: string;
+}
+
+export class TeamReviewResponseDto {
+  @ApiProperty({ example: '2f8566aa-2dca-4742-9f44-6042ea7eb7be' })
+  id!: string;
+
+  @ApiProperty({ example: '2ef742a5-4a58-48e8-aa61-1021e3d4986f' })
+  rescueRequestId!: string;
+
+  @ApiProperty({ example: 'b17fafda-f496-4226-9d86-7640b58e9208' })
+  teamId!: string;
+
+  @ApiProperty({ example: 'Alpha Rescue Team' })
+  teamName!: string | null;
+
+  @ApiProperty({ example: 5 })
+  rating!: number;
+
+  @ApiProperty({ enum: TeamReviewOutcome, example: TeamReviewOutcome.SUCCESS })
+  outcome!: TeamReviewOutcome;
+
+  @ApiPropertyOptional({ example: 'Đội đến nhanh và hỗ trợ rất tận tình.' })
+  comment!: string | null;
+
+  @ApiProperty({ example: '2026-03-12T08:10:00.000Z' })
+  createdAt!: Date;
 }

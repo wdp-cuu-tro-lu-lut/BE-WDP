@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
@@ -17,14 +17,18 @@ import {
   TeamMember,
   TeamMemberRole,
   TeamMemberStatus,
+  TeamRegistrationRequest,
+  TeamRegistrationRequestStatus,
   TeamSpecialty,
   TeamVehicle,
   TeamVehicleStatus,
   VehicleType,
 } from '@/database/entities';
 import {
+  CreateTeamRegistrationRequestDto,
   CreateTeamMemberDto,
   CreateTeamDto,
+  ReviewTeamRegistrationRequestDto,
   TeamEquipmentDto,
   TeamVehicleDto,
   UpdateTeamDto,
@@ -53,8 +57,121 @@ export class TeamsService {
     private vehicleTypeRepository: Repository<VehicleType>,
     @InjectRepository(TeamMember)
     private teamMemberRepository: Repository<TeamMember>,
+    @InjectRepository(TeamRegistrationRequest)
+    private teamRegistrationRequestRepository: Repository<TeamRegistrationRequest>,
     private dataSource: DataSource,
   ) {}
+
+  async createTeamRegistrationRequest(
+    requestedById: string,
+    createDto: CreateTeamRegistrationRequestDto,
+  ) {
+    await this.ensureAccountCanRequestTeam(requestedById);
+
+    const pendingRequest = await this.teamRegistrationRequestRepository.findOne({
+      where: {
+        requestedById,
+        status: TeamRegistrationRequestStatus.PENDING,
+      },
+    });
+
+    if (pendingRequest) {
+      throw new ConflictException('You already have a pending team registration request');
+    }
+
+    const request = this.teamRegistrationRequestRepository.create({
+      requestedById,
+      name: createDto.name.trim(),
+      area: createDto.area?.trim() || null,
+      teamSize: createDto.teamSize,
+      baseLocation: createDto.baseLocation?.trim() || null,
+      latitude: createDto.latitude ?? null,
+      longitude: createDto.longitude ?? null,
+      description: createDto.description?.trim() || null,
+      specialties: createDto.specialties ?? [],
+      equipmentList: createDto.equipmentList ?? [],
+      vehicles: createDto.vehicles ?? [],
+      status: TeamRegistrationRequestStatus.PENDING,
+    });
+
+    const savedRequest = await this.teamRegistrationRequestRepository.save(request);
+    return this.getTeamRegistrationRequest(savedRequest.id);
+  }
+
+  async listMyTeamRegistrationRequests(requestedById: string) {
+    const requests = await this.teamRegistrationRequestRepository.find({
+      where: { requestedById },
+      relations: ['requestedBy', 'requestedBy.profile', 'reviewedBy', 'reviewedBy.profile'],
+      order: { createdAt: 'DESC' },
+    });
+
+    return requests.map((request) => this.serializeTeamRegistrationRequest(request));
+  }
+
+  async listTeamRegistrationRequests() {
+    const requests = await this.teamRegistrationRequestRepository.find({
+      relations: ['requestedBy', 'requestedBy.profile', 'reviewedBy', 'reviewedBy.profile'],
+      order: { createdAt: 'DESC' },
+    });
+
+    return requests.map((request) => this.serializeTeamRegistrationRequest(request));
+  }
+
+  async getTeamRegistrationRequest(id: string) {
+    const request = await this.teamRegistrationRequestRepository.findOne({
+      where: { id },
+      relations: ['requestedBy', 'requestedBy.profile', 'reviewedBy', 'reviewedBy.profile'],
+    });
+
+    if (!request) {
+      throw new ResourceNotFoundException('Team registration request', id);
+    }
+
+    return this.serializeTeamRegistrationRequest(request);
+  }
+
+  async reviewTeamRegistrationRequest(
+    id: string,
+    reviewerId: string,
+    reviewDto: ReviewTeamRegistrationRequestDto,
+  ) {
+    const request = await this.teamRegistrationRequestRepository.findOne({
+      where: { id },
+      relations: ['requestedBy', 'requestedBy.profile'],
+    });
+
+    if (!request) {
+      throw new ResourceNotFoundException('Team registration request', id);
+    }
+
+    if (request.status !== TeamRegistrationRequestStatus.PENDING) {
+      throw new ConflictException('This team registration request has already been reviewed');
+    }
+
+    const approvedTeamId = await this.dataSource.transaction(async (manager) => {
+      request.status = reviewDto.status;
+      request.reviewedById = reviewerId;
+      request.reviewedAt = new Date();
+      request.reviewNote = reviewDto.reviewNote?.trim() || null;
+
+      if (reviewDto.status === TeamRegistrationRequestStatus.REJECTED) {
+        await manager.getRepository(TeamRegistrationRequest).save(request);
+        return null;
+      }
+
+      await this.ensureAccountCanRequestTeam(request.requestedById, manager);
+      const createdTeam = await this.createTeamFromRegistrationRequest(manager, request);
+      request.approvedTeamId = createdTeam.id;
+      await manager.getRepository(TeamRegistrationRequest).save(request);
+      return createdTeam.id;
+    });
+
+    if (approvedTeamId) {
+      return this.getTeam(approvedTeamId);
+    }
+
+    return this.getTeamRegistrationRequest(id);
+  }
 
   async listVehicleTypes() {
     const vehicleTypes = await this.vehicleTypeRepository.find({
@@ -70,6 +187,46 @@ export class TeamsService {
       defaultCapacity: vehicleType.defaultCapacity,
       isActive: vehicleType.isActive,
     }));
+  }
+
+  async getMyTeam(accountId: string) {
+    const context = await this.getTeamAccessContext(accountId);
+    return this.getTeam(context.team.id);
+  }
+
+  async listMyTeamMembers(accountId: string) {
+    const context = await this.getTeamAccessContext(accountId);
+    return this.listTeamMembers(context.team.id);
+  }
+
+  async updateMyTeam(accountId: string, updateTeamDto: UpdateTeamDto) {
+    const context = await this.getTeamLeaderContext(accountId);
+    const { rating, isActive, ...allowedUpdates } = updateTeamDto;
+    return this.updateTeam(context.team.id, allowedUpdates);
+  }
+
+  async addMyTeamMember(accountId: string, createTeamMemberDto: CreateTeamMemberDto) {
+    const context = await this.getTeamLeaderContext(accountId);
+    return this.addTeamMember(context.team.id, createTeamMemberDto);
+  }
+
+  async updateMyTeamMember(
+    accountId: string,
+    memberId: string,
+    updateTeamMemberDto: UpdateTeamMemberDto,
+  ) {
+    const context = await this.getTeamLeaderContext(accountId);
+    return this.updateTeamMember(context.team.id, memberId, updateTeamMemberDto);
+  }
+
+  async removeMyTeamMember(accountId: string, memberId: string) {
+    const context = await this.getTeamLeaderContext(accountId);
+    return this.removeTeamMember(context.team.id, memberId);
+  }
+
+  async disbandMyTeam(accountId: string) {
+    const context = await this.getTeamLeaderContext(accountId);
+    return this.deleteTeam(context.team.id);
   }
 
   async createTeam(createTeamDto: CreateTeamDto) {
@@ -351,7 +508,13 @@ export class TeamsService {
     let qb = this.teamRepository
       .createQueryBuilder('team')
       .leftJoinAndSelect('team.account', 'account')
-      .leftJoinAndSelect('account.profile', 'profile');
+      .leftJoinAndSelect('account.profile', 'profile')
+      .loadRelationCountAndMap(
+        'team.totalVehicles',
+        'team.vehicles',
+        'vehicle',
+        (vehicleQb) => vehicleQb.andWhere('vehicle.deletedAt IS NULL'),
+      );
 
     if (isActive !== undefined) {
       qb = qb.where('team.isActive = :isActive', { isActive });
@@ -467,7 +630,7 @@ export class TeamsService {
   async deleteTeam(id: string) {
     const team = await this.teamRepository.findOne({
       where: { id },
-      relations: ['account'],
+      relations: ['account', 'teamMembers'],
     });
 
     if (!team) {
@@ -483,6 +646,8 @@ export class TeamsService {
         await manager.getRepository(Account).save(team.account);
       }
 
+      await manager.getRepository(TeamMember).delete({ teamId: team.id });
+
       await manager.getRepository(Team).softRemove(team);
     });
 
@@ -490,11 +655,17 @@ export class TeamsService {
   }
 
   private toTeamResponse(team: Team) {
+    const totalVehicles =
+      (team as Team & { totalVehicles?: number }).totalVehicles ??
+      team.vehicles?.length ??
+      0;
+
     return {
       id: team.id,
       name: team.name,
       area: team.area,
       teamSize: team.teamSize,
+      totalVehicles,
       baseLocation: team.baseLocation,
       latitude: team.latitude,
       longitude: team.longitude,
@@ -679,6 +850,147 @@ export class TeamsService {
         is_leader: true,
       },
     ];
+  }
+
+  private serializeTeamRegistrationRequest(request: TeamRegistrationRequest) {
+    return {
+      id: request.id,
+      name: request.name,
+      area: request.area,
+      teamSize: request.teamSize,
+      baseLocation: request.baseLocation,
+      latitude: request.latitude,
+      longitude: request.longitude,
+      description: request.description,
+      specialties: request.specialties ?? [],
+      equipmentList: request.equipmentList ?? [],
+      vehicles: request.vehicles ?? [],
+      status: request.status,
+      reviewNote: request.reviewNote,
+      approvedTeamId: request.approvedTeamId,
+      reviewedAt: request.reviewedAt,
+      createdAt: request.createdAt,
+      updatedAt: request.updatedAt,
+      requestedBy: request.requestedBy
+        ? {
+            id: request.requestedBy.id,
+            email: request.requestedBy.email,
+            phone: request.requestedBy.phone,
+            fullName: request.requestedBy.profile?.fullName ?? null,
+          }
+        : null,
+      reviewedBy: request.reviewedBy
+        ? {
+            id: request.reviewedBy.id,
+            email: request.reviewedBy.email,
+            fullName: request.reviewedBy.profile?.fullName ?? null,
+          }
+        : null,
+    };
+  }
+
+  private async getTeamAccessContext(accountId: string) {
+    const membership = await this.teamMemberRepository.findOne({
+      where: { accountId },
+      relations: ['team'],
+    });
+
+    if (membership?.team) {
+      return {
+        team: membership.team,
+        membership,
+        isLeader: membership.role === TeamMemberRole.TEAM_LEADER,
+      };
+    }
+
+    const team = await this.teamRepository.findOne({ where: { accountId } });
+    if (team) {
+      return {
+        team,
+        membership: null,
+        isLeader: true,
+      };
+    }
+
+    throw new ForbiddenException('This account is not linked to any rescue team');
+  }
+
+  private async getTeamLeaderContext(accountId: string) {
+    const context = await this.getTeamAccessContext(accountId);
+
+    if (!context.isLeader) {
+      throw new ForbiddenException('Only the team leader can perform this action');
+    }
+
+    return context;
+  }
+
+  private async ensureAccountCanRequestTeam(
+    accountId: string,
+    manager?: DataSource['manager'],
+  ) {
+    const accountRepository = manager?.getRepository(Account) ?? this.accountRepository;
+    const teamRepository = manager?.getRepository(Team) ?? this.teamRepository;
+    const teamMemberRepository =
+      manager?.getRepository(TeamMember) ?? this.teamMemberRepository;
+
+    const account = await accountRepository.findOne({ where: { id: accountId } });
+    if (!account) {
+      throw new ResourceNotFoundException('Account', accountId);
+    }
+
+    const [managedTeam, membership] = await Promise.all([
+      teamRepository.findOne({ where: { accountId } }),
+      teamMemberRepository.findOne({ where: { accountId } }),
+    ]);
+
+    if (managedTeam || membership) {
+      throw new ConflictException('This account is already linked to a rescue team');
+    }
+
+    return account;
+  }
+
+  private async createTeamFromRegistrationRequest(
+    manager: DataSource['manager'],
+    request: TeamRegistrationRequest,
+  ) {
+    const accountRepository = manager.getRepository(Account);
+    const teamRepository = manager.getRepository(Team);
+
+    const account = await accountRepository.findOne({
+      where: { id: request.requestedById },
+      relations: ['profile'],
+    });
+
+    if (!account) {
+      throw new ResourceNotFoundException('Account', request.requestedById);
+    }
+
+    account.role = AccountRole.RESCUE_TEAM;
+    account.isActive = true;
+    await accountRepository.save(account);
+
+    const team = teamRepository.create();
+    team.name = request.name;
+    team.area = request.area ?? '';
+    team.teamSize = request.teamSize;
+    team.baseLocation = request.baseLocation;
+    team.latitude = request.latitude;
+    team.longitude = request.longitude;
+    team.rating = null;
+    team.accountId = request.requestedById;
+    team.isActive = true;
+    const savedTeam = await teamRepository.save(team);
+
+    await this.ensureLeaderMembership(manager, savedTeam.id, request.requestedById);
+    await this.replaceTeamRelations(manager, savedTeam.id, {
+      specialties: request.specialties ?? [],
+      equipmentList: (request.equipmentList ?? []) as TeamEquipmentDto[],
+      vehicles: (request.vehicles ?? []) as TeamVehicleDto[],
+    });
+
+    return savedTeam;
   }
 
   private async getTeamMember(teamId: string, memberId: string) {

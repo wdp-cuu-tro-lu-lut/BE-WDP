@@ -15,6 +15,7 @@ import { Allocation } from './allocation.entity';
 import { Account } from './account.entity';
 import { TeamEquipment } from './team-equipment.entity';
 import { TeamMember } from './team-member.entity';
+import { TeamReview } from './team-review.entity';
 import { TeamSpecialty } from './team-specialty.entity';
 import { TeamVehicle } from './team-vehicle.entity';
 
@@ -86,4 +87,7 @@ export class Team {
 
   @OneToMany(() => TeamMember, (teamMember) => teamMember.team)
   teamMembers!: TeamMember[];
+
+  @OneToMany(() => TeamReview, (teamReview) => teamReview.team)
+  reviews!: TeamReview[];
 }

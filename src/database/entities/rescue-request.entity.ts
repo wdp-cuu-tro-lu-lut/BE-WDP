@@ -11,6 +11,7 @@ import {
 } from 'typeorm';
 import { Account } from './account.entity';
 import { RescueAssignment } from './rescue-assignment.entity';
+import { TeamReview } from './team-review.entity';
 
 const stringArrayJsonTransformer = {
   to: (value: string[] | null) => (value == null ? null : JSON.stringify(value)),
@@ -118,4 +119,7 @@ export class RescueRequest {
     cascade: true,
   })
   assignments!: RescueAssignment[];
+
+  @OneToMany(() => TeamReview, (teamReview) => teamReview.rescueRequest)
+  teamReviews!: TeamReview[];
 }

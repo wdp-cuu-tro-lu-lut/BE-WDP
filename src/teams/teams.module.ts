@@ -8,12 +8,17 @@ import {
   Team,
   TeamEquipment,
   TeamMember,
+  TeamRegistrationRequest,
   TeamSpecialty,
   TeamVehicle,
   VehicleType,
 } from '@/database/entities';
 import { TeamsService } from '@/teams/services';
-import { TeamsController } from '@/teams/controllers';
+import {
+  TeamRegistrationRequestsController,
+  TeamSelfController,
+  TeamsController,
+} from '@/teams/controllers';
 
 @Module({
   imports: [
@@ -24,6 +29,7 @@ import { TeamsController } from '@/teams/controllers';
       RescueAssignment,
       Allocation,
       TeamMember,
+      TeamRegistrationRequest,
       TeamSpecialty,
       TeamEquipment,
       TeamVehicle,
@@ -31,7 +37,7 @@ import { TeamsController } from '@/teams/controllers';
     ]),
   ],
   providers: [TeamsService],
-  controllers: [TeamsController],
+  controllers: [TeamsController, TeamSelfController, TeamRegistrationRequestsController],
   exports: [TeamsService],
 })
 export class TeamsModule {}

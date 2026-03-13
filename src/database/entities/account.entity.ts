@@ -14,6 +14,8 @@ import { RefreshToken } from './refresh-token.entity';
 import { RescueRequest } from './rescue-request.entity';
 import { RescueAssignment } from './rescue-assignment.entity';
 import { TeamMember } from './team-member.entity';
+import { TeamRegistrationRequest } from './team-registration-request.entity';
+import { TeamReview } from './team-review.entity';
 import { VolunteerRegistration } from './volunteer-registration.entity';
 import { Donation } from './donation.entity';
 import { WarehouseReceipt } from './warehouse-receipt.entity';
@@ -87,4 +89,13 @@ export class Account {
 
   @OneToMany(() => TeamMember, (teamMember) => teamMember.account)
   teamMemberships!: TeamMember[];
+
+  @OneToMany(() => TeamReview, (teamReview) => teamReview.reviewer)
+  teamReviews!: TeamReview[];
+
+  @OneToMany(
+    () => TeamRegistrationRequest,
+    (teamRegistrationRequest) => teamRegistrationRequest.requestedBy,
+  )
+  teamRegistrationRequests!: TeamRegistrationRequest[];
 }

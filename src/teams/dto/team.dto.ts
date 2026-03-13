@@ -20,6 +20,7 @@ import {
   TeamEquipmentStatus,
   TeamMemberRole,
   TeamMemberStatus,
+  TeamRegistrationRequestStatus,
   TeamVehicleStatus,
 } from '@/database/entities';
 
@@ -222,6 +223,103 @@ export class UpdateTeamMemberDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+}
+
+export class CreateTeamRegistrationRequestDto {
+  @ApiProperty({
+    example: 'Đội cứu hộ dân sự Bình Thạnh',
+    description: 'Proposed team name',
+  })
+  @IsString()
+  @IsNotEmpty()
+  name!: string;
+
+  @ApiPropertyOptional({
+    example: 'Bình Thạnh, Phú Nhuận, Gò Vấp, TP.HCM',
+    description: 'Proposed operating area',
+  })
+  @IsOptional()
+  @IsString()
+  area?: string;
+
+  @ApiProperty({
+    example: 8,
+    description: 'Expected initial team size',
+  })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  teamSize!: number;
+
+  @ApiPropertyOptional({
+    example: 'Kho tập kết Bình Thạnh, TP.HCM',
+    description: 'Base location of the proposed team',
+  })
+  @IsOptional()
+  @IsString()
+  baseLocation?: string;
+
+  @ApiPropertyOptional({ example: 10.8035 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  latitude?: number;
+
+  @ApiPropertyOptional({ example: 106.7097 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  longitude?: number;
+
+  @ApiPropertyOptional({
+    example: 'Nhóm tình nguyện cứu hộ tại địa phương, có kinh nghiệm ứng phó ngập lụt.',
+    description: 'Additional description about the proposed team',
+  })
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @ApiPropertyOptional({
+    type: [String],
+    example: ['first_aid', 'water_rescue'],
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsString({ each: true })
+  specialties?: string[];
+
+  @ApiPropertyOptional({ type: [TeamEquipmentDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => TeamEquipmentDto)
+  equipmentList?: TeamEquipmentDto[];
+
+  @ApiPropertyOptional({ type: [TeamVehicleDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => TeamVehicleDto)
+  vehicles?: TeamVehicleDto[];
+}
+
+export class ReviewTeamRegistrationRequestDto {
+  @ApiProperty({
+    enum: TeamRegistrationRequestStatus,
+    example: TeamRegistrationRequestStatus.APPROVED,
+    description: 'Approve or reject the team registration request',
+  })
+  @IsEnum(TeamRegistrationRequestStatus)
+  status!: TeamRegistrationRequestStatus.APPROVED | TeamRegistrationRequestStatus.REJECTED;
+
+  @ApiPropertyOptional({
+    example: 'Đủ hồ sơ và phù hợp khu vực đang thiếu đội hỗ trợ.',
+    description: 'Admin decision note',
+  })
+  @IsOptional()
+  @IsString()
+  reviewNote?: string;
 }
 
 export class CreateTeamDto {

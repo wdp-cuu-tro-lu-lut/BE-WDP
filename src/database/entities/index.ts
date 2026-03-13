@@ -3,6 +3,8 @@ export * from './profile.entity';
 export * from './refresh-token.entity';
 export * from './team.entity';
 export * from './team-member.entity';
+export * from './team-review.entity';
+export * from './team-registration-request.entity';
 export * from './team-specialty.entity';
 export * from './team-equipment.entity';
 export * from './team-vehicle.entity';

@@ -2,18 +2,22 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
+  Account,
   RescueRequest,
   RescueAssignment,
   RescueStatus,
   AssignmentStatus,
   Team,
   TeamMember,
+  TeamReview,
+  TeamReviewOutcome,
   AccountRole,
 } from '@/database/entities';
 import {
   CreateRescueRequestDto,
   CreateGuestRescueRequestDto,
   ClaimRescueRequestDto,
+  CreateTeamReviewDto,
   ReviewRescueRequestDto,
   CreateRescueAssignmentDto,
   RespondAssignmentDto,
@@ -34,6 +38,8 @@ import {
 @Injectable()
 export class RescueService {
   constructor(
+    @InjectRepository(Account)
+    private accountRepository: Repository<Account>,
     @InjectRepository(RescueRequest)
     private rescueRepository: Repository<RescueRequest>,
     @InjectRepository(RescueAssignment)
@@ -42,6 +48,8 @@ export class RescueService {
     private teamRepository: Repository<Team>,
     @InjectRepository(TeamMember)
     private teamMemberRepository: Repository<TeamMember>,
+    @InjectRepository(TeamReview)
+    private teamReviewRepository: Repository<TeamReview>,
   ) {}
 
   async createRequest(creatorId: string, createDto: CreateRescueRequestDto) {
@@ -133,6 +141,110 @@ export class RescueService {
       throw new ResourceNotFoundException('Rescue request', id);
     }
     return rescue;
+  }
+
+  async listTeamReviews(
+    requestId: string,
+    actor: { id: string; role?: AccountRole },
+  ) {
+    const rescue = await this.rescueRepository.findOne({
+      where: { id: requestId },
+      relations: ['assignments', 'assignments.team'],
+    });
+
+    if (!rescue) {
+      throw new ResourceNotFoundException('Rescue request', requestId);
+    }
+
+    const canManageAnyRequest =
+      actor.role === AccountRole.ADMIN || actor.role === AccountRole.STAFF;
+
+    if (!canManageAnyRequest && rescue.creatorId !== actor.id) {
+      throw new ForbiddenException('You are not allowed to view reviews for this request');
+    }
+
+    const reviews = await this.teamReviewRepository.find({
+      where: { rescueRequestId: requestId },
+      relations: ['team', 'reviewer', 'reviewer.profile'],
+      order: { createdAt: 'DESC' },
+    });
+
+    return reviews.map((review) => this.serializeTeamReview(review));
+  }
+
+  async createTeamReview(
+    requestId: string,
+    reviewerId: string,
+    createTeamReviewDto: CreateTeamReviewDto,
+  ) {
+    const rescue = await this.rescueRepository.findOne({
+      where: { id: requestId },
+      relations: ['assignments', 'assignments.team'],
+    });
+
+    if (!rescue) {
+      throw new ResourceNotFoundException('Rescue request', requestId);
+    }
+
+    if (rescue.creatorId !== reviewerId) {
+      throw new ForbiddenException('You can only review your own rescue request');
+    }
+
+    if (![RescueStatus.DONE, RescueStatus.CANCELED].includes(rescue.status)) {
+      throw new ConflictException(
+        'Team can only be reviewed after the rescue request is completed or fails',
+      );
+    }
+
+    const acceptedAssignment = (rescue.assignments ?? []).find(
+      (assignment) =>
+        assignment.teamId === createTeamReviewDto.teamId &&
+        assignment.status === AssignmentStatus.ACCEPTED,
+    );
+
+    if (!acceptedAssignment) {
+      throw new ConflictException(
+        'This team did not accept the specified rescue request',
+      );
+    }
+
+    const existingReview = await this.teamReviewRepository.findOne({
+      where: {
+        rescueRequestId: requestId,
+        teamId: createTeamReviewDto.teamId,
+        reviewerId,
+      },
+    });
+
+    if (existingReview) {
+      throw new ConflictException('You have already reviewed this team for this rescue request');
+    }
+
+    const review = this.teamReviewRepository.create({
+      rescueRequestId: requestId,
+      teamId: createTeamReviewDto.teamId,
+      reviewerId,
+      rating: createTeamReviewDto.rating,
+      outcome:
+        rescue.status === RescueStatus.DONE
+          ? TeamReviewOutcome.SUCCESS
+          : TeamReviewOutcome.FAILED,
+      comment: createTeamReviewDto.comment?.trim() || null,
+    });
+
+    const savedReview = await this.teamReviewRepository.save(review);
+    await this.refreshTeamRating(createTeamReviewDto.teamId);
+
+    const hydratedReview = await this.teamReviewRepository.findOne({
+      where: { id: savedReview.id },
+      relations: ['team', 'reviewer', 'reviewer.profile'],
+    });
+
+    if (!hydratedReview) {
+      throw new ResourceNotFoundException('Team review', savedReview.id);
+    }
+
+    return this.serializeTeamReview(hydratedReview);
   }
 
   async listMyRequests(creatorId: string, page = 1, limit = 20) {
@@ -466,6 +578,42 @@ export class RescueService {
     }
 
     return this.teamRepository.findOne({ where: { accountId } });
+  }
+
+  private serializeTeamReview(review: TeamReview) {
+    return {
+      id: review.id,
+      rescueRequestId: review.rescueRequestId,
+      teamId: review.teamId,
+      teamName: review.team?.name ?? null,
+      reviewerId: review.reviewerId,
+      reviewerName: review.reviewer?.profile?.fullName ?? null,
+      rating: review.rating,
+      outcome: review.outcome,
+      comment: review.comment,
+      createdAt: review.createdAt,
+      updatedAt: review.updatedAt,
+    };
+  }
+
+  private async refreshTeamRating(teamId: string) {
+    const summary = await this.teamReviewRepository
+      .createQueryBuilder('review')
+      .select('AVG(review.rating)', 'averageRating')
+      .addSelect('COUNT(review.id)', 'reviewCount')
+      .where('review.teamId = :teamId', { teamId })
+      .getRawOne<{ averageRating: string | null; reviewCount: string }>();
+
+    const team = await this.teamRepository.findOne({ where: { id: teamId } });
+    if (!team) {
+      throw new ResourceNotFoundException('Team', teamId);
+    }
+
+    team.rating = summary?.averageRating
+      ? Number(Number(summary.averageRating).toFixed(2))
+      : null;
+
+    await this.teamRepository.save(team);
   }
 
   async cancelRequest(id: string, creatorId: string) {
