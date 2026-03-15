@@ -19,10 +19,10 @@ export class VolunteerRegistration {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column({ type: 'uuid' })
+  @Column({ type: 'varchar', length: 255 })
   eventId!: string;
 
-  @Column({ type: 'uuid' })
+  @Column({ type: 'varchar', length: 255 })
   accountId!: string;
 
   @Column({ type: 'text', nullable: true })

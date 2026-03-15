@@ -25,10 +25,10 @@ export class DonationItem {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column({ type: 'uuid' })
+  @Column({ type: 'varchar', length: 255 })
   donationId!: string;
 
-  @Column({ type: 'uuid', nullable: true })
+  @Column({ type: 'varchar', length: 255, nullable: true })
   categoryId!: string;
 
   @Column({ type: 'text', nullable: true })

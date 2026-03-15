@@ -28,6 +28,7 @@ import {
   CreateTeamRegistrationRequestDto,
   CreateTeamMemberDto,
   CreateTeamDto,
+  ListMyTeamAllocationsQueryDto,
   ReviewTeamRegistrationRequestDto,
   TeamEquipmentDto,
   TeamVehicleDto,
@@ -197,6 +198,74 @@ export class TeamsService {
   async listMyTeamMembers(accountId: string) {
     const context = await this.getTeamAccessContext(accountId);
     return this.listTeamMembers(context.team.id);
+  }
+
+  async listMyTeamAllocations(
+    accountId: string,
+    query: ListMyTeamAllocationsQueryDto,
+  ) {
+    const context = await this.getTeamAccessContext(accountId);
+    const { eventId, status, page = 1, limit = 20 } = query;
+
+    let qb = this.allocationRepository
+      .createQueryBuilder('allocation')
+      .leftJoinAndSelect('allocation.items', 'items')
+      .leftJoinAndSelect('allocation.team', 'team')
+      .leftJoinAndSelect('allocation.createdBy', 'createdBy')
+      .leftJoinAndSelect('createdBy.profile', 'createdByProfile')
+      .where('allocation.teamId = :teamId', { teamId: context.team.id });
+
+    if (eventId) {
+      qb = qb.andWhere('allocation.eventId = :eventId', { eventId });
+    }
+
+    if (status) {
+      qb = qb.andWhere('allocation.status = :status', { status });
+    }
+
+    const total = await qb.getCount();
+    const skip = (page - 1) * limit;
+    const allocations = await qb
+      .orderBy('allocation.createdAt', 'DESC')
+      .skip(skip)
+      .take(limit)
+      .getMany();
+
+    return {
+      data: allocations,
+      meta: {
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  async getMyTeamAllocation(accountId: string, allocationId: string) {
+    const { allocation } = await this.getMyTeamAllocationContext(accountId, allocationId);
+    return allocation;
+  }
+
+  async receiveMyTeamAllocation(accountId: string, allocationId: string) {
+    const { allocation } = await this.getMyTeamAllocationContext(accountId, allocationId);
+
+    if (allocation.status === AllocationStatus.DELIVERED) {
+      return allocation;
+    }
+
+    if (
+      ![AllocationStatus.CREATED, AllocationStatus.DISPATCHED].includes(
+        allocation.status,
+      )
+    ) {
+      throw new ConflictException('This allocation cannot be marked as received');
+    }
+
+    allocation.status = AllocationStatus.DELIVERED;
+    await this.allocationRepository.save(allocation);
+
+    return this.getMyTeamAllocation(accountId, allocationId);
   }
 
   async updateMyTeam(accountId: string, updateTeamDto: UpdateTeamDto) {
@@ -373,7 +442,7 @@ export class TeamsService {
       if (membership.role === TeamMemberRole.TEAM_LEADER) {
         membership.status = TeamMemberStatus.ACTIVE;
         await membershipRepository.save(membership);
-        await this.promoteTeamLeader(manager, teamId, membership.accountId);
+        await this.promoteTeamLeader(manager, teamId, membership.accountId!);
       } else {
         await membershipRepository.save(membership);
       }
@@ -457,7 +526,7 @@ export class TeamsService {
       await membershipRepository.save(membership);
 
       if (targetRole === TeamMemberRole.TEAM_LEADER) {
-        await this.promoteTeamLeader(manager, teamId, membership.accountId);
+        await this.promoteTeamLeader(manager, teamId, membership.accountId!);
       }
     });
 
@@ -489,7 +558,7 @@ export class TeamsService {
         throw new BadRequestException('Current team leader cannot be removed');
       }
 
-      await membershipRepository.delete({ id: memberId, teamId });
+      await this.softDeleteTeamMembers(manager, teamId, [membership]);
     });
 
     return { success: true };
@@ -516,8 +585,20 @@ export class TeamsService {
         (vehicleQb) => vehicleQb.andWhere('vehicle.deletedAt IS NULL'),
       );
 
+    if (isActive === false) {
+      qb = qb.withDeleted();
+    }
+
     if (isActive !== undefined) {
-      qb = qb.where('team.isActive = :isActive', { isActive });
+      if (isActive) {
+        qb = qb.where(
+          'team.isActive = true AND (account.id IS NULL OR account.isActive = true)',
+        );
+      } else {
+        qb = qb.where(
+          '(team.isActive = false OR (account.id IS NOT NULL AND account.isActive = false))',
+        );
+      }
     }
 
     if (q) {
@@ -638,17 +719,20 @@ export class TeamsService {
     }
 
     await this.dataSource.transaction(async (manager) => {
-      team.isActive = false;
-      await manager.getRepository(Team).save(team);
+      await this.softDeleteTeamMembers(manager, team.id);
+      await this.softDeleteTeamSpecialties(manager, team.id);
+      await this.softDeleteTeamEquipment(manager, team.id);
+      await this.softDeleteTeamVehicles(manager, team.id);
 
       if (team.account) {
-        team.account.isActive = false;
-        await manager.getRepository(Account).save(team.account);
+        await this.archiveAccountForSoftDelete(manager, team.account);
       }
 
-      await manager.getRepository(TeamMember).delete({ teamId: team.id });
-
-      await manager.getRepository(Team).softRemove(team);
+      await manager.getRepository(Team).update(team.id, {
+        isActive: false,
+        accountId: null,
+      });
+      await manager.getRepository(Team).softDelete(team.id);
     });
 
     return { success: true };
@@ -659,6 +743,8 @@ export class TeamsService {
       (team as Team & { totalVehicles?: number }).totalVehicles ??
       team.vehicles?.length ??
       0;
+
+    const isActive = this.isTeamEffectivelyActive(team);
 
     return {
       id: team.id,
@@ -671,7 +757,7 @@ export class TeamsService {
       longitude: team.longitude,
       rating: team.rating,
       accountId: team.accountId,
-      isActive: team.isActive,
+      isActive,
       createdAt: team.createdAt,
       updatedAt: team.updatedAt,
       account: team.account
@@ -692,6 +778,7 @@ export class TeamsService {
     assignments: RescueAssignment[],
     allocations: Allocation[],
   ) {
+    const isActive = this.isTeamEffectivelyActive(team);
     const acceptedAssignments = assignments.filter(
       (assignment) => assignment.status === AssignmentStatus.ACCEPTED,
     );
@@ -756,7 +843,7 @@ export class TeamsService {
         ),
       );
 
-    const status = !team.isActive
+    const status = !isActive
       ? 'offline'
       : hasMissionInProgress
         ? 'on_mission'
@@ -852,6 +939,18 @@ export class TeamsService {
     ];
   }
 
+  private isTeamEffectivelyActive(team: Team) {
+    if (!team.isActive) {
+      return false;
+    }
+
+    if (team.account && team.account.isActive === false) {
+      return false;
+    }
+
+    return true;
+  }
+
   private serializeTeamRegistrationRequest(request: TeamRegistrationRequest) {
     return {
       id: request.id,
@@ -913,6 +1012,20 @@ export class TeamsService {
     }
 
     throw new ForbiddenException('This account is not linked to any rescue team');
+  }
+
+  private async getMyTeamAllocationContext(accountId: string, allocationId: string) {
+    const context = await this.getTeamAccessContext(accountId);
+    const allocation = await this.allocationRepository.findOne({
+      where: { id: allocationId, teamId: context.team.id },
+      relations: ['items', 'team', 'createdBy', 'createdBy.profile'],
+    });
+
+    if (!allocation) {
+      throw new ResourceNotFoundException('Allocation', allocationId);
+    }
+
+    return { context, allocation };
   }
 
   private async getTeamLeaderContext(accountId: string) {
@@ -1127,7 +1240,7 @@ export class TeamsService {
     teamId: string,
     specialties: string[],
   ) {
-    await manager.getRepository(TeamSpecialty).delete({ teamId });
+    await this.softDeleteTeamSpecialties(manager, teamId);
 
     if (specialties.length === 0) {
       return;
@@ -1153,7 +1266,7 @@ export class TeamsService {
     teamId: string,
     equipmentList: TeamEquipmentDto[],
   ) {
-    await manager.getRepository(TeamEquipment).delete({ teamId });
+    await this.softDeleteTeamEquipment(manager, teamId);
 
     if (equipmentList.length === 0) {
       return;
@@ -1180,7 +1293,7 @@ export class TeamsService {
     teamId: string,
     vehicles: TeamVehicleDto[],
   ) {
-    await manager.getRepository(TeamVehicle).delete({ teamId });
+    await this.softDeleteTeamVehicles(manager, teamId);
 
     if (vehicles.length === 0) {
       return;
@@ -1229,5 +1342,104 @@ export class TeamsService {
     if (rows.length > 0) {
       await manager.getRepository(TeamVehicle).save(rows);
     }
+  }
+
+  private async softDeleteTeamMembers(
+    manager: DataSource['manager'],
+    teamId: string,
+    memberships?: TeamMember[],
+  ) {
+    const membershipRepository = manager.getRepository(TeamMember);
+    const rows = memberships ?? (await membershipRepository.find({ where: { teamId } }));
+
+    if (rows.length === 0) {
+      return;
+    }
+
+    rows.forEach((membership) => {
+      membership.archivedAccountId = membership.accountId;
+      membership.accountId = null;
+    });
+
+    await membershipRepository.save(rows);
+    await membershipRepository.softRemove(rows);
+  }
+
+  private async softDeleteTeamSpecialties(
+    manager: DataSource['manager'],
+    teamId: string,
+  ) {
+    const specialtyRepository = manager.getRepository(TeamSpecialty);
+    const rows = await specialtyRepository.find({ where: { teamId } });
+
+    if (rows.length === 0) {
+      return;
+    }
+
+    await specialtyRepository.softRemove(rows);
+  }
+
+  private async softDeleteTeamEquipment(
+    manager: DataSource['manager'],
+    teamId: string,
+  ) {
+    const equipmentRepository = manager.getRepository(TeamEquipment);
+    const rows = await equipmentRepository.find({ where: { teamId } });
+
+    if (rows.length === 0) {
+      return;
+    }
+
+    await equipmentRepository.softRemove(rows);
+  }
+
+  private async softDeleteTeamVehicles(
+    manager: DataSource['manager'],
+    teamId: string,
+  ) {
+    const vehicleRepository = manager.getRepository(TeamVehicle);
+    const rows = await vehicleRepository.find({ where: { teamId } });
+
+    if (rows.length === 0) {
+      return;
+    }
+
+    rows.forEach((vehicle) => {
+      vehicle.plateNumber = this.buildArchivedPlateNumber(vehicle.plateNumber, vehicle.id);
+    });
+
+    await vehicleRepository.save(rows);
+    await vehicleRepository.softRemove(rows);
+  }
+
+  private async archiveAccountForSoftDelete(
+    manager: DataSource['manager'],
+    account: Account,
+  ) {
+    account.isActive = false;
+    account.email = account.email
+      ? this.buildArchivedEmail(account.id)
+      : undefined;
+    account.phone = account.phone
+      ? this.buildArchivedPhone(account.id)
+      : undefined;
+
+    const accountRepository = manager.getRepository(Account);
+    await accountRepository.save(account);
+    await accountRepository.softDelete(account.id);
+  }
+
+  private buildArchivedPlateNumber(plateNumber: string, vehicleId: string) {
+    const suffix = `#del#${vehicleId.slice(0, 8)}`;
+    const maxBaseLength = Math.max(0, 50 - suffix.length);
+    return `${plateNumber.slice(0, maxBaseLength)}${suffix}`;
+  }
+
+  private buildArchivedEmail(accountId: string) {
+    return `deleted+${accountId}@wdp.local`;
+  }
+
+  private buildArchivedPhone(accountId: string) {
+    return `d${accountId.replace(/-/g, '').slice(0, 19)}`;
   }
 }

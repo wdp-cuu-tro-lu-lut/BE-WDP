@@ -2,7 +2,7 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
-import { Account, Profile, AccountRole } from '@/database/entities';
+import { Account, Profile, AccountRole, Team } from '@/database/entities';
 import {
   CreateAccountDto,
   UpdateAccountDto,
@@ -24,6 +24,8 @@ export class AccountsService {
     private accountRepository: Repository<Account>,
     @InjectRepository(Profile)
     private profileRepository: Repository<Profile>,
+    @InjectRepository(Team)
+    private teamRepository: Repository<Team>,
     @InjectRepository(Verification)
     private verificationRepository: Repository<Verification>,
     private notificationService: NotificationService,
@@ -278,6 +280,11 @@ export class AccountsService {
 
     account.isActive = statusDto.isActive;
     await this.accountRepository.save(account);
+
+    await this.teamRepository.update(
+      { accountId: id },
+      { isActive: statusDto.isActive },
+    );
 
     return this.getAccount(id);
   }

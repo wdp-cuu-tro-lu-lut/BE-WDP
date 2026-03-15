@@ -7,7 +7,6 @@ import {
   OneToMany,
   CreateDateColumn,
   UpdateDateColumn,
-  Unique,
   Index,
 } from 'typeorm';
 import { RescueRequest, RescuePriority } from './rescue-request.entity';
@@ -25,7 +24,6 @@ export enum RescueSupplyOrderStatus {
 }
 
 @Entity('rescue_supply_orders')
-@Unique('unique_rescue_supply_order_request', ['rescueRequestId'])
 @Index(['rescueRequestId'])
 @Index(['createdById'])
 @Index(['status'])

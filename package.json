@@ -25,7 +25,8 @@
     "migration:revert": "typeorm migration:revert",
     "migration:generate:js": "npm run build && node node_modules/typeorm/cli.js migration:generate -d ./dist/data-source.js",
     "migration:run:js": "npm run build && node node_modules/typeorm/cli.js migration:run -d ./dist/data-source.js",
-    "seed": "node dist/scripts/seed.js"
+    "seed": "node dist/scripts/seed.js",
+    "seed:manual-stock": "npx ts-node -r tsconfig-paths/register src/scripts/seed-manual-stock-entry.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.3.0",

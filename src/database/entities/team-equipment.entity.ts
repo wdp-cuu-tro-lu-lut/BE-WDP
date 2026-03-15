@@ -24,7 +24,7 @@ export class TeamEquipment {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column({ type: 'uuid' })
+  @Column({ type: 'varchar', length: 255 })
   teamId!: string;
 
   @Column({ type: 'varchar', length: 255 })

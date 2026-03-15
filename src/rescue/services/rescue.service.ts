@@ -7,6 +7,8 @@ import {
   RescueAssignment,
   RescueStatus,
   AssignmentStatus,
+  RescueSupplyOrder,
+  RescueSupplyOrderStatus,
   Team,
   TeamMember,
   TeamReview,
@@ -20,7 +22,9 @@ import {
   CreateTeamReviewDto,
   ReviewRescueRequestDto,
   CreateRescueAssignmentDto,
+  ReplaceRescueAssignmentsDto,
   RespondAssignmentDto,
+  ReportAssignmentIncidentDto,
   UpdateProgressDto,
   ListRescueRequestsQueryDto,
   ListAssignmentsQueryDto,
@@ -34,6 +38,7 @@ import {
   RescueStatusTransition,
   AssignmentStatusTransition,
 } from '@/rescue/helpers';
+import { WarehouseService } from '@/warehouse/services';
 
 @Injectable()
 export class RescueService {
@@ -44,12 +49,15 @@ export class RescueService {
     private rescueRepository: Repository<RescueRequest>,
     @InjectRepository(RescueAssignment)
     private assignmentRepository: Repository<RescueAssignment>,
+    @InjectRepository(RescueSupplyOrder)
+    private rescueSupplyOrderRepository: Repository<RescueSupplyOrder>,
     @InjectRepository(Team)
     private teamRepository: Repository<Team>,
     @InjectRepository(TeamMember)
     private teamMemberRepository: Repository<TeamMember>,
     @InjectRepository(TeamReview)
     private teamReviewRepository: Repository<TeamReview>,
+    private warehouseService: WarehouseService,
   ) {}
 
   async createRequest(creatorId: string, createDto: CreateRescueRequestDto) {
@@ -427,6 +435,107 @@ export class RescueService {
     return this.getRequest(id);
   }
 
+  async replaceAssignments(id: string, replaceDto: ReplaceRescueAssignmentsDto) {
+    const rescue = await this.getRequest(id);
+
+    if (
+      rescue.status !== RescueStatus.REVIEWED &&
+      rescue.status !== RescueStatus.ASSIGNED &&
+      rescue.status !== RescueStatus.ACCEPTED
+    ) {
+      throw new ConflictException(
+        'Can only replace teams for REVIEWED, ASSIGNED, or ACCEPTED requests',
+      );
+    }
+
+    const hasDispatchedSupplyOrder =
+      (await this.rescueSupplyOrderRepository.count({
+        where: {
+          rescueRequestId: id,
+          status: RescueSupplyOrderStatus.DISPATCHED,
+        },
+      })) > 0;
+
+    const desiredTeamIds = [...new Set(replaceDto.teamIds)];
+    const currentAssignments = rescue.assignments ?? [];
+    const acceptedAssignments = currentAssignments.filter(
+      (assignment) => assignment.status === AssignmentStatus.ACCEPTED,
+    );
+
+    const removedAcceptedAssignments = acceptedAssignments.filter(
+      (assignment) => !desiredTeamIds.includes(assignment.teamId),
+    );
+
+    if (removedAcceptedAssignments.length > 0 && hasDispatchedSupplyOrder) {
+      throw new ConflictException(
+        'Cannot replace accepted teams after rescue supplies were dispatched. Use the incident flow first.',
+      );
+    }
+
+    await this.rescueRepository.manager.transaction(async (manager) => {
+      const assignmentRepository = manager.getRepository(RescueAssignment);
+      const rescueRepository = manager.getRepository(RescueRequest);
+      const assignmentsToSave: RescueAssignment[] = [];
+
+      for (const assignment of currentAssignments) {
+        const shouldRemainAssigned = desiredTeamIds.includes(assignment.teamId);
+
+        if (shouldRemainAssigned) {
+          if (
+            assignment.status === AssignmentStatus.CANCELED ||
+            assignment.status === AssignmentStatus.DECLINED
+          ) {
+            assignment.status = AssignmentStatus.SENT;
+            assignment.respondedAt = null as any;
+            assignment.progressNote = null as any;
+            assignment.incidentNote = null;
+            assignment.incidentReportedAt = null;
+            assignmentsToSave.push(assignment);
+          }
+
+          continue;
+        }
+
+        if (
+          assignment.status === AssignmentStatus.SENT ||
+          assignment.status === AssignmentStatus.ACCEPTED
+        ) {
+          assignment.status = AssignmentStatus.CANCELED;
+          assignmentsToSave.push(assignment);
+        }
+      }
+
+      const existingTeamIds = currentAssignments.map((assignment) => assignment.teamId);
+      const newTeamIds = desiredTeamIds.filter(
+        (teamId) => !existingTeamIds.includes(teamId),
+      );
+
+      const newAssignments = newTeamIds.map((teamId) =>
+        assignmentRepository.create({
+          rescueRequestId: id,
+          teamId,
+        }),
+      );
+
+      if (assignmentsToSave.length > 0) {
+        await assignmentRepository.save(assignmentsToSave);
+      }
+
+      if (newAssignments.length > 0) {
+        await assignmentRepository.save(newAssignments);
+      }
+
+      await rescueRepository.update(id, {
+        status: this.resolveRescueStatusFromAssignments(
+          [...currentAssignments, ...newAssignments],
+          rescue.requiredTeams ?? 1,
+        ),
+      });
+    });
+
+    return this.getRequest(id);
+  }
+
   async getTeamAssignments(accountId: string, query: ListAssignmentsQueryDto) {
     const team = await this.resolveTeamForAccount(accountId);
     if (!team) {
@@ -544,6 +653,87 @@ export class RescueService {
     return this.assignmentRepository.save(assignment);
   }
 
+  async reportAssignmentIncident(
+    accountId: string,
+    assignmentId: string,
+    reportDto: ReportAssignmentIncidentDto,
+  ) {
+    const team = await this.resolveTeamForAccount(accountId);
+
+    if (!team) {
+      throw new ForbiddenException('This account is not linked to any rescue team');
+    }
+
+    const incidentNote = reportDto.incidentNote.trim();
+
+    return this.rescueRepository.manager.transaction(async (manager) => {
+      const assignmentRepository = manager.getRepository(RescueAssignment);
+      const rescueRepository = manager.getRepository(RescueRequest);
+
+      const assignment = await assignmentRepository.findOne({
+        where: { id: assignmentId, teamId: team.id },
+        relations: ['team', 'rescueRequest', 'rescueRequest.assignments'],
+      });
+
+      if (!assignment) {
+        throw new ResourceNotFoundException('Assignment', assignmentId);
+      }
+
+      if (assignment.status !== AssignmentStatus.ACCEPTED) {
+        throw new ConflictException(
+          'Only accepted assignments can report incidents and cancel the mission',
+        );
+      }
+
+      if (
+        ![RescueStatus.ACCEPTED, RescueStatus.IN_PROGRESS].includes(
+          assignment.rescueRequest.status,
+        )
+      ) {
+        throw new ConflictException(
+          `Cannot report incident while rescue request is ${assignment.rescueRequest.status}`,
+        );
+      }
+
+      const returnedOrder = await this.warehouseService.returnDispatchedRescueOrderForIncident(
+        assignment.rescueRequestId,
+        accountId,
+        incidentNote,
+        manager,
+      );
+
+      assignment.status = AssignmentStatus.CANCELED;
+      assignment.incidentNote = incidentNote;
+      assignment.incidentReportedAt = new Date();
+      assignment.progressNote = incidentNote;
+
+      const updatedAssignments = (assignment.rescueRequest.assignments ?? []).map(
+        (currentAssignment) =>
+          currentAssignment.id === assignment.id ? assignment : currentAssignment,
+      );
+
+      assignment.rescueRequest.status = this.resolveRescueStatusFromAssignments(
+        updatedAssignments,
+        assignment.rescueRequest.requiredTeams ?? 1,
+      );
+
+      await assignmentRepository.save(assignment);
+      await rescueRepository.save(assignment.rescueRequest);
+
+      return {
+        assignment: await assignmentRepository.findOne({
+          where: { id: assignment.id },
+          relations: ['team', 'rescueRequest'],
+        }),
+        rescueRequest: await rescueRepository.findOne({
+          where: { id: assignment.rescueRequestId },
+          relations: ['assignments', 'assignments.team'],
+        }),
+        returnedOrder,
+      };
+    });
+  }
+
   private async getAssignmentForTeamAccount(
     accountId: string,
     assignmentId: string,
@@ -631,5 +821,30 @@ export class RescueService {
 
     rescue.status = RescueStatus.CANCELED;
     return this.rescueRepository.save(rescue);
+  }
+
+  private resolveRescueStatusFromAssignments(
+    assignments: RescueAssignment[],
+    requiredTeams: number,
+  ) {
+    const activeAssignments = assignments.filter(
+      (assignment) =>
+        ![AssignmentStatus.CANCELED, AssignmentStatus.DECLINED].includes(
+          assignment.status,
+        ),
+    );
+    const acceptedAssignments = activeAssignments.filter(
+      (assignment) => assignment.status === AssignmentStatus.ACCEPTED,
+    );
+
+    if (acceptedAssignments.length >= requiredTeams && activeAssignments.length > 0) {
+      return RescueStatus.ACCEPTED;
+    }
+
+    if (activeAssignments.length > 0) {
+      return RescueStatus.ASSIGNED;
+    }
+
+    return RescueStatus.REVIEWED;
   }
 }

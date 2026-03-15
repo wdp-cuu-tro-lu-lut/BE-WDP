@@ -13,6 +13,8 @@ Xác nhận nhanh các flow sau hoạt động đúng:
 - Khi thiếu hàng, staff tạo được yêu cầu bổ sung và admin review được
 - Khi admin duyệt bổ sung, kho tăng và ghi transaction `IN`
 - Sau cứu trợ, hoàn kho vật phẩm dư sẽ tăng kho và ghi transaction `IN`
+- Khi đội đang làm nhiệm vụ báo sự cố, vật phẩm đã dispatch được hoàn toàn về kho và phiếu cũ được đóng
+- Sau khi phiếu cũ đã đóng, staff có thể tạo lại phiếu mới cho cùng rescue request
 - Trang/sổ giao dịch kho xem được lịch sử nhập xuất theo source và thời gian
 
 ## Phạm vi quyền truy cập
@@ -258,11 +260,36 @@ Ví dụ với request `HIGH`, `estimatedPeople = 6` thì kỳ vọng:
   - `source = RESCUE_RETURN`
   - `referenceId = rescueOrderId`
 
+### 15. Team báo sự cố sau khi đã nhận vật phẩm
+
+- Dùng token của đội đang giữ assignment `ACCEPTED` hoặc đang `IN_PROGRESS`
+- Gọi `PATCH /team/assignments/:assignmentId/report-incident`
+- Body mẫu:
+
+```json
+{
+  "incidentNote": "Đội gặp sự cố phương tiện, xin hủy nhiệm vụ"
+}
+```
+
+- Kỳ vọng:
+  - Assignment chuyển `CANCELED`
+  - Phiếu rescue order đang `DISPATCHED` được chuyển `COMPLETED`
+  - Mỗi item có `returnedQuantity` tăng đúng bằng số đã dispatch còn treo
+  - Kho tăng lại tương ứng và có transaction `RESCUE_RETURN`
+
+### 16. Tạo lại phiếu mới cho cùng rescue request sau sự cố
+
+- Dùng token staff hoặc admin gọi lại `POST /warehouse/rescue-orders` với cùng `rescueRequestId`
+- Kỳ vọng:
+  - Tạo được phiếu mới nếu phiếu trước đã `COMPLETED` hoặc `CANCELED`
+  - Phiếu mới bắt đầu ở `PLANNED`
+
 ## Checklist nhánh thiếu hàng và bổ sung hàng
 
 Nên dùng một rescue request khác để test nhánh này, tránh đụng vào phiếu đã `COMPLETED` ở trên.
 
-### 15. Tạo phiếu mới cho request khác nhưng kho không đủ
+### 17. Tạo phiếu mới cho request khác nhưng kho không đủ
 
 - Tạo thêm 1 rescue request khác với `priority` cao hơn hoặc `estimatedPeople` lớn hơn
 - Review và assign như các bước trên
@@ -271,7 +298,7 @@ Nên dùng một rescue request khác để test nhánh này, tránh đụng và
   - Tạo phiếu thành công
   - `status = PLANNED`
 
-### 16. Check stock khi kho thiếu
+### 18. Check stock khi kho thiếu
 
 - Gọi `POST /warehouse/rescue-orders/:id/check-stock`
 - Kỳ vọng:
@@ -282,7 +309,7 @@ Nên dùng một rescue request khác để test nhánh này, tránh đụng và
     - `shortageQuantity > 0`
   - `lastShortageQuantity` trên item được cập nhật
 
-### 17. Staff tạo replenishment request
+### 19. Staff tạo replenishment request
 
 - Đăng nhập bằng staff
 - Gọi `POST /warehouse/rescue-orders/:id/replenishment-requests`
@@ -302,14 +329,14 @@ Nên dùng một rescue request khác để test nhánh này, tránh đụng và
   - `requestedQuantity` của từng item bằng số thiếu thực tế tại lúc tạo request
   - Rescue order vẫn ở trạng thái `INSUFFICIENT`
 
-### 18. Không được tạo 2 replenishment request pending cùng lúc
+### 20. Không được tạo 2 replenishment request pending cùng lúc
 
 - Gọi lại `POST /warehouse/rescue-orders/:id/replenishment-requests`
 - Kỳ vọng:
   - Bị chặn
   - HTTP `409`
 
-### 19. Admin từ chối replenishment request
+### 21. Admin từ chối replenishment request
 
 - Đăng nhập bằng admin
 - Gọi `PATCH /warehouse/replenishment-requests/:id/review`
@@ -328,14 +355,14 @@ Nên dùng một rescue request khác để test nhánh này, tránh đụng và
   - Kho không tăng
   - Không có transaction `MANUAL_REPLENISHMENT` mới
 
-### 20. Tạo lại replenishment request sau khi request cũ đã bị reject
+### 22. Tạo lại replenishment request sau khi request cũ đã bị reject
 
 - Gọi lại `POST /warehouse/rescue-orders/:id/replenishment-requests`
 - Kỳ vọng:
   - Tạo được request mới
   - `status = PENDING`
 
-### 21. Admin duyệt replenishment request
+### 23. Admin duyệt replenishment request
 
 - Gọi `PATCH /warehouse/replenishment-requests/:id/review`
 - Body mẫu:
@@ -368,7 +395,7 @@ Nên dùng một rescue request khác để test nhánh này, tránh đụng và
     - `READY` nếu kho đã đủ
     - `INSUFFICIENT` nếu vẫn còn thiếu
 
-### 22. Kiểm tra transaction sau duyệt bổ sung hàng
+### 24. Kiểm tra transaction sau duyệt bổ sung hàng
 
 - Gọi `GET /warehouse/transactions?source=MANUAL_REPLENISHMENT&type=IN&page=1&limit=20`
 - Kỳ vọng:
@@ -376,7 +403,7 @@ Nên dùng một rescue request khác để test nhánh này, tránh đụng và
   - `referenceId = replenishmentRequestId`
   - `balanceAfter` lớn hơn hoặc bằng `balanceBefore`
 
-### 23. Dispatch phiếu sau khi kho đã đủ lại
+### 25. Dispatch phiếu sau khi kho đã đủ lại
 
 - Nếu sau bước 21, rescue order đã về `READY`, gọi `POST /warehouse/rescue-orders/:id/dispatch`
 - Kỳ vọng:
@@ -386,7 +413,7 @@ Nên dùng một rescue request khác để test nhánh này, tránh đụng và
 
 ## Checklist phân quyền
 
-### 24. Staff không được review replenishment request
+### 26. Staff không được review replenishment request
 
 - Đăng nhập bằng staff
 - Gọi `PATCH /warehouse/replenishment-requests/:id/review`
@@ -394,7 +421,7 @@ Nên dùng một rescue request khác để test nhánh này, tránh đụng và
   - Bị chặn bởi role guard
   - HTTP `403`
 
-### 25. User thường không được gọi các API warehouse
+### 27. User thường không được gọi các API warehouse
 
 - Đăng nhập bằng `user@example.com`
 - Thử gọi `GET /warehouse/rescue-orders`
@@ -404,7 +431,7 @@ Nên dùng một rescue request khác để test nhánh này, tránh đụng và
 
 ## Checklist sổ giao dịch kho
 
-### 26. Xem toàn bộ ledger nhập xuất kho
+### 28. Xem toàn bộ ledger nhập xuất kho
 
 - Gọi `GET /warehouse/transactions?page=1&limit=20`
 - Kỳ vọng:

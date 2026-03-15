@@ -28,7 +28,7 @@ export class WarehouseStock {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column({ type: 'uuid' })
+  @Column({ type: 'varchar', length: 255 })
   categoryId!: string;
 
   @ManyToOne(() => Category)

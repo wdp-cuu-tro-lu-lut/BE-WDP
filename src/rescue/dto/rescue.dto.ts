@@ -1,4 +1,4 @@
-import { IsOptional, IsEnum, IsNumber, IsString, IsNotEmpty, IsArray, IsUUID, ArrayNotEmpty, MaxLength, Min, IsInt, ArrayMaxSize, Max } from 'class-validator';
+import { IsOptional, IsEnum, IsNumber, IsString, IsNotEmpty, IsArray, IsUUID, ArrayNotEmpty, ArrayUnique, MaxLength, Min, IsInt, ArrayMaxSize, Max } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { RescuePriority, RescueStatus, AssignmentStatus, TeamReviewOutcome } from '@/database/entities';
 
@@ -229,6 +229,20 @@ export class CreateRescueAssignmentDto {
   teamIds!: string[];
 }
 
+export class ReplaceRescueAssignmentsDto {
+  @ApiProperty({
+    example: ['550e8400-e29b-41d4-a716-446655440001'],
+    description:
+      'Final list of team IDs that should remain assigned to this rescue request. Use an empty array to remove all pending assignments.',
+    isArray: true,
+    type: 'string',
+  })
+  @IsArray()
+  @ArrayUnique()
+  @IsUUID('4', { each: true })
+  teamIds!: string[];
+}
+
 export class RespondAssignmentDto {
   @ApiProperty({
     enum: AssignmentStatus,
@@ -255,6 +269,17 @@ export class UpdateProgressDto {
   })
   @IsOptional()
   progressNote?: string;
+}
+
+export class ReportAssignmentIncidentDto {
+  @ApiProperty({
+    example: 'Xe cứu trợ bị hỏng giữa đường, không thể tiếp tục nhiệm vụ',
+    description: 'Nội dung báo cáo sự cố của đội cứu trợ',
+  })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(1000)
+  incidentNote!: string;
 }
 
 export class ListRescueRequestsQueryDto {

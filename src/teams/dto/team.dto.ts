@@ -15,14 +15,45 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
+  AllocationStatus,
   TeamEquipmentStatus,
   TeamMemberRole,
   TeamMemberStatus,
   TeamRegistrationRequestStatus,
   TeamVehicleStatus,
 } from '@/database/entities';
+
+const transformBooleanValue = ({
+  value,
+  obj,
+  key,
+}: {
+  value: unknown;
+  obj: Record<string, unknown>;
+  key: string;
+}) => {
+  const rawValue = obj?.[key] ?? value;
+
+  if (typeof rawValue === 'boolean' || rawValue === undefined || rawValue === null) {
+    return rawValue;
+  }
+
+  if (typeof rawValue === 'string') {
+    const normalizedValue = rawValue.trim().toLowerCase();
+
+    if (normalizedValue === 'true') {
+      return true;
+    }
+
+    if (normalizedValue === 'false') {
+      return false;
+    }
+  }
+
+  return rawValue;
+};
 
 export class VehicleTypeResponseDto {
   @ApiProperty({ example: 'xe_cuu_thuong' })
@@ -168,6 +199,7 @@ export class CreateTeamMemberDto {
     description: 'Whether the login account should be active',
   })
   @IsOptional()
+  @Transform(transformBooleanValue)
   @IsBoolean()
   isActive?: boolean;
 }
@@ -221,6 +253,7 @@ export class UpdateTeamMemberDto {
     description: 'Whether the login account should be active',
   })
   @IsOptional()
+  @Transform(transformBooleanValue)
   @IsBoolean()
   isActive?: boolean;
 }
@@ -558,6 +591,7 @@ export class ListTeamsQueryDto {
     required: false,
   })
   @IsOptional()
+  @Transform(transformBooleanValue)
   @IsBoolean()
   isActive?: boolean;
 
@@ -602,4 +636,45 @@ export class ListTeamsQueryDto {
   })
   @IsOptional()
   order: 'ASC' | 'DESC' = 'DESC';
+}
+
+export class ListMyTeamAllocationsQueryDto {
+  @ApiPropertyOptional({
+    example: '550e8400-e29b-41d4-a716-446655440001',
+    description: 'Filter allocations by event ID',
+  })
+  @IsOptional()
+  @IsString()
+  eventId?: string;
+
+  @ApiPropertyOptional({
+    enum: AllocationStatus,
+    example: AllocationStatus.DISPATCHED,
+    description: 'Filter allocations by status',
+  })
+  @IsOptional()
+  @IsEnum(AllocationStatus)
+  status?: AllocationStatus;
+
+  @ApiPropertyOptional({
+    example: 1,
+    description: 'Page number',
+    default: 1,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page: number = 1;
+
+  @ApiPropertyOptional({
+    example: 20,
+    description: 'Items per page',
+    default: 20,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  limit: number = 20;
 }

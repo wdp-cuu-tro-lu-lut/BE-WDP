@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -13,6 +14,7 @@ import { CurrentUser, JwtAuthGuard, Roles, RolesGuard } from '@/common';
 import { AccountRole } from '@/database/entities';
 import {
   CreateTeamMemberDto,
+  ListMyTeamAllocationsQueryDto,
   UpdateTeamDto,
   UpdateTeamMemberDto,
 } from '@/teams/dto';
@@ -42,6 +44,33 @@ export class TeamSelfController {
   @ApiOperation({ summary: 'List members of my team' })
   async listMyTeamMembers(@CurrentUser() user: any) {
     return this.teamsService.listMyTeamMembers(user.id);
+  }
+
+  @Get('allocations')
+  @ApiOperation({ summary: 'List allocations assigned to my team' })
+  async listMyTeamAllocations(
+    @CurrentUser() user: any,
+    @Query() query: ListMyTeamAllocationsQueryDto,
+  ) {
+    return this.teamsService.listMyTeamAllocations(user.id, query);
+  }
+
+  @Get('allocations/:allocationId')
+  @ApiOperation({ summary: 'Get allocation detail assigned to my team' })
+  async getMyTeamAllocation(
+    @CurrentUser() user: any,
+    @Param('allocationId') allocationId: string,
+  ) {
+    return this.teamsService.getMyTeamAllocation(user.id, allocationId);
+  }
+
+  @Post('allocations/:allocationId/receive')
+  @ApiOperation({ summary: 'Confirm my team has received allocated items' })
+  async receiveMyTeamAllocation(
+    @CurrentUser() user: any,
+    @Param('allocationId') allocationId: string,
+  ) {
+    return this.teamsService.receiveMyTeamAllocation(user.id, allocationId);
   }
 
   @Patch()

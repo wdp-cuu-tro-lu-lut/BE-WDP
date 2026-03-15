@@ -21,6 +21,7 @@ import {
   RescueSupplyOrderItem,
   RescueSupplyOrderStatus,
   WarehouseReceipt,
+  WarehouseReceiptType,
   WarehouseReceiptItem,
   WarehouseStock,
   WarehouseTransaction,
@@ -31,6 +32,7 @@ import { ItemCondition } from '@/database/entities/warehouse-stock.entity';
 import {
   CompleteRescueSupplyOrderDto,
   CreateAllocationDto,
+  CreateManualStockEntryDto,
   CreateReceiptDto,
   CreateRescueReplenishmentRequestDto,
   CreateRescueSupplyOrderDto,
@@ -173,6 +175,7 @@ export class WarehouseService {
     try {
       const receipt = queryRunner.manager.create(WarehouseReceipt, {
         donationId: donation.id,
+        receiptType: WarehouseReceiptType.DONATION,
         createdById,
       });
       const savedReceipt = await queryRunner.manager.save(receipt);
@@ -220,6 +223,95 @@ export class WarehouseService {
 
       donation.status = DonationStatus.RECEIVED;
       await queryRunner.manager.save(donation);
+
+      await queryRunner.commitTransaction();
+      return this.getReceipt(savedReceipt.id);
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      throw err;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  async createManualStockEntry(
+    createdById: string,
+    createDto: CreateManualStockEntryDto,
+  ) {
+    if (!createDto.items?.length) {
+      throw new ConflictException('Manual stock entry must include at least one item');
+    }
+
+    const normalizedItems = this.mergeManualStockEntryItems(createDto.items);
+    const categoryIds = normalizedItems.map((item) => item.categoryId);
+    const categories = await this.categoryRepository.find({
+      where: { id: In(categoryIds) },
+    });
+    const categoryMap = new Map(categories.map((category) => [category.id, category]));
+
+    for (const item of normalizedItems) {
+      if (!categoryMap.has(item.categoryId)) {
+        throw new ResourceNotFoundException('Category', item.categoryId);
+      }
+    }
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const receipt = queryRunner.manager.create(WarehouseReceipt, {
+        donationId: null,
+        receiptType: WarehouseReceiptType.MANUAL,
+        referenceCode: createDto.referenceCode?.trim() || null,
+        note: createDto.note?.trim() || null,
+        createdById,
+      });
+      const savedReceipt = await queryRunner.manager.save(receipt);
+
+      for (const item of normalizedItems) {
+        const receiptItem = queryRunner.manager.create(WarehouseReceiptItem, {
+          receiptId: savedReceipt.id,
+          categoryId: item.categoryId,
+          condition: item.condition,
+          quantity: item.quantity,
+        });
+        await queryRunner.manager.save(receiptItem);
+
+        let stock = await queryRunner.manager.findOne(WarehouseStock, {
+          where: {
+            categoryId: item.categoryId,
+            condition: item.condition,
+          },
+        });
+        const balanceBefore = stock?.quantity ?? 0;
+
+        if (!stock) {
+          stock = queryRunner.manager.create(WarehouseStock, {
+            categoryId: item.categoryId,
+            condition: item.condition,
+            quantity: 0,
+          });
+        }
+
+        stock.quantity += item.quantity;
+        await queryRunner.manager.save(stock);
+
+        await this.recordWarehouseTransaction(queryRunner.manager, {
+          categoryId: item.categoryId,
+          performedById: createdById,
+          type: WarehouseTransactionType.IN,
+          source: WarehouseTransactionSource.MANUAL_STOCK_ENTRY,
+          referenceId: savedReceipt.id,
+          quantity: item.quantity,
+          balanceBefore,
+          balanceAfter: stock.quantity,
+          note:
+            createDto.note?.trim() ||
+            createDto.referenceCode?.trim() ||
+            `Manual warehouse receipt ${savedReceipt.id}`,
+        });
+      }
 
       await queryRunner.commitTransaction();
       return this.getReceipt(savedReceipt.id);
@@ -314,6 +406,30 @@ export class WarehouseService {
         : null,
       items,
     };
+  }
+
+  private mergeManualStockEntryItems(
+    items: CreateManualStockEntryDto['items'],
+  ) {
+    const grouped = new Map<string, CreateManualStockEntryDto['items'][number]>();
+
+    for (const item of items) {
+      const key = `${item.categoryId}:${item.condition}`;
+      const existing = grouped.get(key);
+
+      if (existing) {
+        existing.quantity += item.quantity;
+        continue;
+      }
+
+      grouped.set(key, {
+        categoryId: item.categoryId,
+        condition: item.condition,
+        quantity: item.quantity,
+      });
+    }
+
+    return [...grouped.values()];
   }
 
   private matchDonationItemForReceiptItem(
@@ -513,12 +629,20 @@ export class WarehouseService {
     createDto: CreateRescueSupplyOrderDto,
   ) {
     const existing = await this.rescueSupplyOrderRepository.findOne({
-      where: { rescueRequestId: createDto.rescueRequestId },
+      where: {
+        rescueRequestId: createDto.rescueRequestId,
+        status: In([
+          RescueSupplyOrderStatus.PLANNED,
+          RescueSupplyOrderStatus.INSUFFICIENT,
+          RescueSupplyOrderStatus.READY,
+          RescueSupplyOrderStatus.DISPATCHED,
+        ]),
+      },
     });
 
     if (existing) {
       throw new ConflictException(
-        'Rescue request already has a supply order',
+        'Rescue request already has an active supply order',
       );
     }
 
@@ -1072,6 +1196,42 @@ export class WarehouseService {
     }
   }
 
+  async returnDispatchedRescueOrderForIncident(
+    rescueRequestId: string,
+    performedById: string,
+    incidentNote: string,
+    manager?: EntityManager,
+  ) {
+    if (manager) {
+      return this.returnDispatchedRescueOrderForIncidentWithManager(
+        manager,
+        rescueRequestId,
+        performedById,
+        incidentNote,
+      );
+    }
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const order = await this.returnDispatchedRescueOrderForIncidentWithManager(
+        queryRunner.manager,
+        rescueRequestId,
+        performedById,
+        incidentNote,
+      );
+      await queryRunner.commitTransaction();
+      return order;
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      throw err;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
   async listTransactions(query: ListWarehouseTransactionsQueryDto) {
     const {
       source,
@@ -1219,6 +1379,75 @@ export class WarehouseService {
     }
 
     return request;
+  }
+
+  private async returnDispatchedRescueOrderForIncidentWithManager(
+    manager: EntityManager,
+    rescueRequestId: string,
+    performedById: string,
+    incidentNote: string,
+  ) {
+    const order = await manager.findOne(RescueSupplyOrder, {
+      where: {
+        rescueRequestId,
+        status: RescueSupplyOrderStatus.DISPATCHED,
+      },
+      relations: ['items', 'items.category'],
+      order: { createdAt: 'DESC' },
+    });
+
+    if (!order) {
+      return null;
+    }
+
+    for (const item of order.items) {
+      const remainingReturnable = item.dispatchedQuantity - item.returnedQuantity;
+
+      if (remainingReturnable <= 0) {
+        continue;
+      }
+
+      let stock = await manager.findOne(WarehouseStock, {
+        where: {
+          categoryId: item.categoryId,
+          condition: ItemCondition.GOOD,
+        },
+      });
+      const balanceBefore = stock?.quantity ?? 0;
+
+      if (!stock) {
+        stock = manager.create(WarehouseStock, {
+          categoryId: item.categoryId,
+          condition: ItemCondition.GOOD,
+          quantity: 0,
+        });
+      }
+
+      stock.quantity += remainingReturnable;
+      await manager.save(stock);
+
+      item.returnedQuantity += remainingReturnable;
+      await manager.save(item);
+
+      await this.recordWarehouseTransaction(manager, {
+        categoryId: item.categoryId,
+        performedById,
+        type: WarehouseTransactionType.IN,
+        source: WarehouseTransactionSource.RESCUE_RETURN,
+        referenceId: order.id,
+        quantity: remainingReturnable,
+        balanceBefore,
+        balanceAfter: stock.quantity,
+        note: `Incident return for rescue request ${rescueRequestId}: ${incidentNote}`,
+      });
+    }
+
+    order.status = RescueSupplyOrderStatus.COMPLETED;
+    order.completedAt = new Date();
+    order.note = `Incident return: ${incidentNote}`;
+    await manager.save(order);
+
+    return this.getRescueSupplyOrder(order.id);
   }
 
   private async serializeRescueSupplyOrder(order: RescueSupplyOrder) {

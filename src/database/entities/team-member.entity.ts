@@ -6,6 +6,7 @@ import {
   JoinColumn,
   CreateDateColumn,
   UpdateDateColumn,
+  DeleteDateColumn,
   Index,
 } from 'typeorm';
 import { Team } from './team.entity';
@@ -25,15 +26,19 @@ export enum TeamMemberStatus {
 @Entity('team_members')
 @Index(['teamId'])
 @Index(['accountId'], { unique: true })
+@Index(['archivedAccountId'])
 export class TeamMember {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column({ type: 'uuid' })
+  @Column({ type: 'varchar', length: 255 })
   teamId!: string;
 
-  @Column({ type: 'uuid' })
-  accountId!: string;
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  accountId!: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  archivedAccountId!: string | null;
 
   @Column({
     type: 'enum',
@@ -58,6 +63,9 @@ export class TeamMember {
   @UpdateDateColumn()
   updatedAt!: Date;
 
+  @DeleteDateColumn()
+  deletedAt?: Date;
+
   @ManyToOne(() => Team, (team) => team.teamMembers, {
     onDelete: 'CASCADE',
   })
@@ -65,6 +73,7 @@ export class TeamMember {
   team!: Team;
 
   @ManyToOne(() => Account, (account) => account.teamMemberships, {
+    nullable: true,
     onDelete: 'CASCADE',
   })
   @JoinColumn({ name: 'accountId' })

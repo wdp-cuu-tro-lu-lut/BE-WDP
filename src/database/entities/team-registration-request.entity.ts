@@ -39,7 +39,7 @@ export class TeamRegistrationRequest {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column({ type: 'uuid' })
+  @Column({ type: 'varchar', length: 255 })
   requestedById!: string;
 
   @Column({ type: 'varchar', length: 255 })
@@ -100,7 +100,7 @@ export class TeamRegistrationRequest {
   })
   status!: TeamRegistrationRequestStatus;
 
-  @Column({ type: 'uuid', nullable: true })
+  @Column({ type: 'varchar', length: 255, nullable: true })
   reviewedById!: string | null;
 
   @Column({ type: 'datetime', nullable: true })

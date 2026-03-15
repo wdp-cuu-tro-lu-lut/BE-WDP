@@ -54,7 +54,7 @@ export class RescueRequest {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column({ type: 'uuid', nullable: true })
+  @Column({ type: 'varchar', length: 255, nullable: true })
   creatorId!: string | null;
 
   @Column({ type: 'varchar', length: 100, nullable: true })

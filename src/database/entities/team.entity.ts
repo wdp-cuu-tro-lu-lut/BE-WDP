@@ -47,8 +47,8 @@ export class Team {
   @Column({ type: 'decimal', precision: 3, scale: 2, nullable: true })
   rating!: number | null;
 
-  @Column({ type: 'uuid', nullable: true })
-  accountId?: string; // Liên kết với tài khoản quản lý (đội trưởng)
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  accountId!: string | null; // Liên kết với tài khoản quản lý (đội trưởng)
 
   @ManyToOne(() => Account, { nullable: true })
   @JoinColumn({ name: 'accountId' })

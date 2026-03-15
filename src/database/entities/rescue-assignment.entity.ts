@@ -28,10 +28,10 @@ export class RescueAssignment {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column({ type: 'uuid' })
+  @Column({ type: 'varchar', length: 255 })
   rescueRequestId!: string;
 
-  @Column({ type: 'uuid' })
+  @Column({ type: 'varchar', length: 255 })
   teamId!: string;
 
   @Column({
@@ -46,6 +46,12 @@ export class RescueAssignment {
 
   @Column({ type: 'text', nullable: true })
   progressNote!: string;
+
+  @Column({ type: 'text', nullable: true })
+  incidentNote!: string | null;
+
+  @Column({ type: 'datetime', nullable: true })
+  incidentReportedAt!: Date | null;
 
   @CreateDateColumn()
   createdAt!: Date;

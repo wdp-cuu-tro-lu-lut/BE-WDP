@@ -14,6 +14,7 @@ import { AccountRole } from '@/database/entities';
 import { WarehouseService } from '@/warehouse/services';
 import {
   CreateReceiptDto,
+  CreateManualStockEntryDto,
   CreateAllocationDto,
   UpdateAllocationStatusDto,
   ListAllocationsQueryDto,
@@ -40,6 +41,16 @@ export class WarehouseController {
     @Query('limit') limit?: number,
   ) {
     return this.warehouseService.listStocks(page, limit);
+  }
+
+  @Post('stocks/manual')
+  @Roles(AccountRole.ADMIN)
+  @ApiOperation({ summary: 'Admin nhập tay tồn kho' })
+  async createManualStockEntry(
+    @CurrentUser() user: any,
+    @Body() createDto: CreateManualStockEntryDto,
+  ) {
+    return this.warehouseService.createManualStockEntry(user.id, createDto);
   }
 
   @Post('receipts')

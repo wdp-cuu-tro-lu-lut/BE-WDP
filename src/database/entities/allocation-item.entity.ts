@@ -23,7 +23,7 @@ export class AllocationItem {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column({ type: 'uuid' })
+  @Column({ type: 'varchar', length: 255 })
   allocationId!: string;
 
   @Column({ type: 'varchar', length: 100 })

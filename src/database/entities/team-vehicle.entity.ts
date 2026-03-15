@@ -26,10 +26,10 @@ export class TeamVehicle {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column({ type: 'uuid' })
+  @Column({ type: 'varchar', length: 255 })
   teamId!: string;
 
-  @Column({ type: 'uuid' })
+  @Column({ type: 'varchar', length: 255 })
   vehicleTypeId!: string;
 
   @Column({ type: 'varchar', length: 50 })

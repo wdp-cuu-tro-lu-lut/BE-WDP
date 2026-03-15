@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Put,
   Body,
   Param,
   Query,
@@ -25,7 +26,9 @@ import {
   CreateTeamReviewDto,
   ReviewRescueRequestDto,
   CreateRescueAssignmentDto,
+  ReplaceRescueAssignmentsDto,
   RespondAssignmentDto,
+  ReportAssignmentIncidentDto,
   UpdateProgressDto,
   ListRescueRequestsQueryDto,
   ListAssignmentsQueryDto,
@@ -45,13 +48,77 @@ export class RescueController {
    */
   @Post('guest')
   @Public()
+  @UseInterceptors(
+    FilesInterceptor('images', 10, {
+      storage: memoryStorage(),
+      fileFilter: (req, file, cb) => {
+        const allowedMimes = [
+          'image/jpeg',
+          'image/png',
+          'image/gif',
+          'image/webp',
+        ];
+
+        if (allowedMimes.includes(file.mimetype)) {
+          cb(null, true);
+        } else {
+          cb(new BadRequestException('Invalid image type'), false);
+        }
+      },
+      limits: { fileSize: 10 * 1024 * 1024 },
+    }),
+  )
   @ApiOperation({
     summary: 'Gửi yêu cầu cứu trợ KHÔNG cần đăng nhập (guest)',
     description:
       'Dành cho trường hợp khẩn cấp. Guest cung cấp tên, SĐT, và địa chỉ. Sau khi đăng nhập có thể claim lại request.',
   })
-  async createGuestRequest(@Body() createDto: CreateGuestRescueRequestDto) {
-    return this.rescueService.createGuestRequest(createDto);
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        guestName: { type: 'string', example: 'Nguyễn Văn A' },
+        guestPhone: { type: 'string', example: '0901234567' },
+        address: { type: 'string', example: '123 Đường ABC, Quận 1, TP.HCM' },
+        latitude: { type: 'number', example: 10.7769 },
+        longitude: { type: 'number', example: 106.6966 },
+        priority: {
+          type: 'string',
+          enum: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'],
+          example: 'HIGH',
+        },
+        note: { type: 'string', example: 'Mực nước đang dâng cao' },
+        estimatedPeople: { type: 'number', example: 5 },
+        images: {
+          type: 'array',
+          items: { type: 'string', format: 'binary' },
+        },
+      },
+      required: ['guestName', 'guestPhone', 'address'],
+    },
+  })
+  async createGuestRequest(
+    @Body() createDto: CreateGuestRescueRequestDto,
+    @UploadedFiles() files: Express.Multer.File[],
+  ) {
+    const uploaded = files?.length
+      ? await Promise.all(
+          files.map((file) => this.filesService.uploadImage(file, 'wdp')),
+        )
+      : [];
+
+    const mergedEvidenceImages = Array.from(
+      new Set([
+        ...(createDto.evidenceImages ?? []),
+        ...uploaded.map((item) => item.url),
+      ]),
+    ).slice(0, 10);
+
+    return this.rescueService.createGuestRequest({
+      ...createDto,
+      evidenceImages: mergedEvidenceImages,
+    });
   }
 
   @Post()
@@ -311,6 +378,18 @@ export class RescueController {
   ) {
     return this.rescueService.assignTeams(id, createDto);
   }
+
+  @Put('admin/:id/assignments')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(AccountRole.ADMIN)
+  @ApiOperation({ summary: 'Replace assigned teams for request (ADMIN)' })
+  async replaceAssignments(
+    @Param('id') id: string,
+    @Body() replaceDto: ReplaceRescueAssignmentsDto,
+  ) {
+    return this.rescueService.replaceAssignments(id, replaceDto);
+  }
 }
 
 @Controller('team/assignments')
@@ -350,5 +429,15 @@ export class TeamAssignmentController {
     @Body() updateDto: UpdateProgressDto,
   ) {
     return this.rescueService.updateProgress(user.id, id, updateDto);
+  }
+
+  @Patch(':id/report-incident')
+  @ApiOperation({ summary: 'Report incident and cancel assignment (RESCUE_TEAM)' })
+  async reportIncident(
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @Body() reportDto: ReportAssignmentIncidentDto,
+  ) {
+    return this.rescueService.reportAssignmentIncident(user.id, id, reportDto);
   }
 }

@@ -1,6 +1,7 @@
 import {
   IsOptional,
   IsArray,
+  ArrayNotEmpty,
   ValidateNested,
   IsInt,
   IsString,
@@ -27,6 +28,71 @@ export class CreateReceiptDto {
   })
   @IsUUID()
   donationId!: string;
+}
+
+export class CreateManualStockEntryItemDto {
+  @ApiProperty({
+    example: '550e8400-e29b-41d4-a716-446655440101',
+    description: 'Category ID nhập kho',
+  })
+  @IsUUID()
+  categoryId!: string;
+
+  @ApiProperty({
+    enum: ItemCondition,
+    example: ItemCondition.GOOD,
+    description: `Tình trạng vật phẩm: ${Object.values(ItemCondition).join(', ')}`,
+  })
+  @IsEnum(ItemCondition)
+  condition!: ItemCondition;
+
+  @ApiProperty({
+    example: 25,
+    description: 'Số lượng nhập kho',
+    type: 'integer',
+  })
+  @IsInt()
+  @Min(1)
+  quantity!: number;
+}
+
+export class CreateManualStockEntryDto {
+  @ApiProperty({
+    example: 'PO-2026-0001',
+    description: 'Mã tham chiếu chứng từ nhập tay',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  referenceCode?: string;
+
+  @ApiProperty({
+    example: 'Nhập tay hàng mua ngoài để bổ sung kho trung tâm',
+    description: 'Ghi chú nhập kho',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  note?: string;
+
+  @ApiProperty({
+    type: CreateManualStockEntryItemDto,
+    isArray: true,
+    example: [
+      {
+        categoryId: '550e8400-e29b-41d4-a716-446655440101',
+        condition: 'GOOD',
+        quantity: 25,
+      },
+    ],
+    description: 'Danh sách vật phẩm admin nhập tay vào kho',
+  })
+  @IsArray()
+  @ArrayNotEmpty()
+  @ValidateNested({ each: true })
+  @Type(() => CreateManualStockEntryItemDto)
+  items!: CreateManualStockEntryItemDto[];
 }
 
 export class AllocationItemInputDto {
