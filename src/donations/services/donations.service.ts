@@ -23,6 +23,7 @@ import {
   ForbiddenException,
   ConflictException,
 } from '@/common/exceptions';
+import { RealtimeNotificationService } from '@/common/services/realtime-notification.service';
 
 @Injectable()
 export class DonationsService {
@@ -33,6 +34,7 @@ export class DonationsService {
     private donationItemRepository: Repository<DonationItem>,
     @InjectRepository(Category)
     private categoryRepository: Repository<Category>,
+    private realtimeNotificationService: RealtimeNotificationService,
   ) {}
 
   async createDonation(eventId: string, creatorId: string, createDto: CreateDonationDto) {
@@ -69,6 +71,18 @@ export class DonationsService {
     }
 
     await this.donationItemRepository.save(items);
+
+    const pendingProductsCount = await this.donationItemRepository
+      .createQueryBuilder('item')
+      .innerJoin('item.donation', 'donation')
+      .where('donation.status = :status', { status: DonationStatus.SUBMITTED })
+      .andWhere('donation.deletedAt IS NULL')
+      .getCount();
+
+    this.realtimeNotificationService.notifyPendingDonationCreated(
+      saved,
+      pendingProductsCount,
+    );
 
     return this.getDonation(saved.id);
   }

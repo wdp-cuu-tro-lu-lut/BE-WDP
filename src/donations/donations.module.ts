@@ -6,9 +6,10 @@ import {
   DonationsController,
   AdminDonationsController,
 } from '@/donations/controllers';
+import { CommonModule } from '@/common/common.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Donation, DonationItem, Category])],
+  imports: [TypeOrmModule.forFeature([Donation, DonationItem, Category]), CommonModule],
   providers: [DonationsService],
   controllers: [DonationsController, AdminDonationsController],
   exports: [DonationsService],

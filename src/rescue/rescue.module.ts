@@ -13,6 +13,7 @@ import { RescueService } from '@/rescue/services';
 import { RescueController, TeamAssignmentController } from '@/rescue/controllers';
 import { FilesModule } from '@/files/files.module';
 import { WarehouseModule } from '@/warehouse/warehouse.module';
+import { CommonModule } from '@/common/common.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { WarehouseModule } from '@/warehouse/warehouse.module';
     ]),
     FilesModule,
     WarehouseModule,
+    CommonModule,
   ],
   providers: [RescueService],
   controllers: [RescueController, TeamAssignmentController],

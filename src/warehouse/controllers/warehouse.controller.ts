@@ -16,6 +16,7 @@ import {
   CreateReceiptDto,
   CreateManualStockEntryDto,
   CreateAllocationDto,
+  WarehouseStatsDto,
   UpdateAllocationStatusDto,
   ListAllocationsQueryDto,
   CreateRescueSupplyOrderDto,
@@ -33,6 +34,12 @@ import {
 @Roles(AccountRole.ADMIN, AccountRole.STAFF)
 export class WarehouseController {
   constructor(private readonly warehouseService: WarehouseService) {}
+
+  @Get('stats')
+  @ApiOperation({ summary: 'Warehouse statistics for staff/admin dashboard' })
+  async getStats(): Promise<WarehouseStatsDto> {
+    return this.warehouseService.getStats();
+  }
 
   @Get('stocks')
   @ApiOperation({ summary: 'List warehouse stocks' })

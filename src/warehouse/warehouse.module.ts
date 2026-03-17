@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { CommonModule } from '@/common/common.module';
 import {
   WarehouseStock,
   WarehouseReceipt,
@@ -21,6 +22,7 @@ import { WarehouseController } from '@/warehouse/controllers';
 
 @Module({
   imports: [
+    CommonModule,
     TypeOrmModule.forFeature([
       WarehouseStock,
       WarehouseReceipt,

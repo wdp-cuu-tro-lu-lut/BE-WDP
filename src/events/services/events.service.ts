@@ -1,7 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Event, VolunteerRegistration } from '@/database/entities';
+import {
+  Event,
+  EventStatus,
+  EventType,
+  VolunteerRegistration,
+} from '@/database/entities';
 import {
   CreateEventDto,
   UpdateEventDto,
@@ -13,6 +18,7 @@ import {
   ResourceNotFoundException,
   ConflictException,
 } from '@/common/exceptions';
+import { RealtimeNotificationService } from '@/common/services/realtime-notification.service';
 
 @Injectable()
 export class EventsService {
@@ -21,6 +27,7 @@ export class EventsService {
     private eventRepository: Repository<Event>,
     @InjectRepository(VolunteerRegistration)
     private volunteerRegistrationRepository: Repository<VolunteerRegistration>,
+    private realtimeNotificationService: RealtimeNotificationService,
   ) {}
 
   async createEvent(createEventDto: CreateEventDto) {
@@ -121,7 +128,24 @@ export class EventsService {
       note: registrationDto.note,
     });
 
-    return this.volunteerRegistrationRepository.save(registration);
+    const savedRegistration = await this.volunteerRegistrationRepository.save(
+      registration,
+    );
+
+    const pendingVolunteerRegistrations = await this.volunteerRegistrationRepository
+      .createQueryBuilder('registration')
+      .innerJoin('registration.event', 'event')
+      .where('event.status = :status', { status: EventStatus.OPEN })
+      .andWhere('event.type = :type', { type: EventType.VOLUNTEER })
+      .getCount();
+
+    this.realtimeNotificationService.notifyVolunteerRegistrationCreated(
+      savedRegistration,
+      pendingVolunteerRegistrations,
+      event.title,
+    );
+
+    return savedRegistration;
   }
 
   async getEventVolunteers(eventId: string, page = 1, limit = 20) {

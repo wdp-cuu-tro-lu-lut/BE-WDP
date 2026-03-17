@@ -5,6 +5,7 @@ import {
   Account,
   RescueRequest,
   RescueAssignment,
+  RescuePriority,
   RescueStatus,
   AssignmentStatus,
   RescueSupplyOrder,
@@ -39,6 +40,7 @@ import {
   AssignmentStatusTransition,
 } from '@/rescue/helpers';
 import { WarehouseService } from '@/warehouse/services';
+import { RealtimeNotificationService } from '@/common/services/realtime-notification.service';
 
 @Injectable()
 export class RescueService {
@@ -58,6 +60,7 @@ export class RescueService {
     @InjectRepository(TeamReview)
     private teamReviewRepository: Repository<TeamReview>,
     private warehouseService: WarehouseService,
+    private realtimeNotificationService: RealtimeNotificationService,
   ) {}
 
   async createRequest(creatorId: string, createDto: CreateRescueRequestDto) {
@@ -66,7 +69,9 @@ export class RescueService {
       ...createDto,
       evidenceImages: createDto.evidenceImages ?? [],
     });
-    return this.rescueRepository.save(rescue);
+    const savedRescue = await this.rescueRepository.save(rescue);
+    await this.notifyStaffAboutPendingRescue(savedRescue);
+    return savedRescue;
   }
 
   /**
@@ -86,7 +91,9 @@ export class RescueService {
       estimatedPeople: createDto.estimatedPeople,
       evidenceImages: createDto.evidenceImages ?? [],
     });
-    return this.rescueRepository.save(rescue);
+    const savedRescue = await this.rescueRepository.save(rescue);
+    await this.notifyStaffAboutPendingRescue(savedRescue);
+    return savedRescue;
   }
 
   async addEvidenceImages(
@@ -387,7 +394,33 @@ export class RescueService {
     if (reviewDto.requiredTeams !== undefined) rescue.requiredTeams = reviewDto.requiredTeams;
     if (reviewDto.note !== undefined) rescue.note = reviewDto.note;
 
-    return this.rescueRepository.save(rescue);
+    const savedRescue = await this.rescueRepository.save(rescue);
+    const pendingRescueRequests = await this.rescueRepository.count({
+      where: { status: RescueStatus.NEW },
+    });
+
+    this.realtimeNotificationService.emitStaffMetricsUpdate({
+      pendingRescueRequests,
+    });
+
+    if (savedRescue.status === RescueStatus.NEW) {
+      await this.notifyStaffAboutPendingRescue(savedRescue);
+    }
+    return savedRescue;
+  }
+
+  private async notifyStaffAboutPendingRescue(rescue: RescueRequest) {
+    const pendingRescueRequests = await this.rescueRepository.count({
+      where: { status: RescueStatus.NEW },
+    });
+
+    this.realtimeNotificationService.notifyUrgentRescueRequestCreated({
+      ...rescue,
+    } as RescueRequest);
+
+    this.realtimeNotificationService.emitStaffMetricsUpdate({
+      pendingRescueRequests,
+    });
   }
 
   async assignTeams(id: string, createDto: CreateRescueAssignmentDto) {

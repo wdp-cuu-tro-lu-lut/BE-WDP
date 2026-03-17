@@ -1,6 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, In, Repository } from 'typeorm';
+import {
+  DataSource,
+  EntityManager,
+  In,
+  MoreThanOrEqual,
+  Repository,
+} from 'typeorm';
 import {
   Allocation,
   AllocationItem,
@@ -41,11 +47,13 @@ import {
   ListWarehouseTransactionsQueryDto,
   ReviewReplenishmentRequestDto,
   UpdateAllocationStatusDto,
+  WarehouseStatsDto,
 } from '@/warehouse/dto';
 import {
   ConflictException,
   ResourceNotFoundException,
 } from '@/common/exceptions';
+import { RealtimeNotificationService } from '@/common/services/realtime-notification.service';
 
 type SupplyFormula = {
   waterPerPerson: number;
@@ -138,7 +146,45 @@ export class WarehouseService {
     @InjectRepository(WarehouseTransaction)
     private warehouseTransactionRepository: Repository<WarehouseTransaction>,
     private dataSource: DataSource,
+    private realtimeNotificationService: RealtimeNotificationService,
   ) {}
+
+  async getStats(): Promise<WarehouseStatsDto> {
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+
+    const [stockSummary, recentDonations, distributedSummary] = await Promise.all([
+      this.stockRepository
+        .createQueryBuilder('stock')
+        .select('COALESCE(SUM(stock.quantity), 0)', 'totalItems')
+        .addSelect('COUNT(DISTINCT stock.categoryId)', 'totalCategories')
+        .getRawOne<{
+          totalItems: string | number | null;
+          totalCategories: string | number | null;
+        }>(),
+      this.receiptRepository.count({
+        where: {
+          receiptType: WarehouseReceiptType.DONATION,
+          createdAt: MoreThanOrEqual(startOfMonth),
+        },
+      }),
+      this.warehouseTransactionRepository
+        .createQueryBuilder('transaction')
+        .select('COALESCE(SUM(transaction.quantity), 0)', 'distributedThisMonth')
+        .where('transaction.type = :type', { type: WarehouseTransactionType.OUT })
+        .andWhere('transaction.createdAt >= :startOfMonth', { startOfMonth })
+        .getRawOne<{ distributedThisMonth: string | number | null }>(),
+    ]);
+
+    return {
+      totalItems: Number(stockSummary?.totalItems ?? 0),
+      totalCategories: Number(stockSummary?.totalCategories ?? 0),
+      totalValue: 0,
+      recentDonations,
+      distributedThisMonth: Number(distributedSummary?.distributedThisMonth ?? 0),
+    };
+  }
 
   async listStocks(page = 1, limit = 20) {
     const qb = this.stockRepository
@@ -976,6 +1022,16 @@ export class WarehouseService {
       this.dataSource.manager,
     );
     await this.syncItemShortages(this.dataSource.manager, order.items, availability.items);
+
+    const pendingReplenishmentRequests =
+      await this.replenishmentRequestRepository.count({
+        where: { status: ReplenishmentRequestStatus.PENDING },
+      });
+
+    this.realtimeNotificationService.notifyReplenishmentRequestCreated(
+      savedRequest,
+      pendingReplenishmentRequests,
+    );
 
     return this.getReplenishmentRequest(savedRequest.id);
   }
