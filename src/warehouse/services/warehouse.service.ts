@@ -454,6 +454,20 @@ export class WarehouseService {
     };
   }
 
+  private serializeAllocation(allocation: Allocation) {
+    const createdBy = allocation.createdBy
+      ? (() => {
+          const { passwordHash, ...safeCreatedBy } = allocation.createdBy;
+          return safeCreatedBy;
+        })()
+      : null;
+
+    return {
+      ...allocation,
+      createdBy,
+    };
+  }
+
   private mergeManualStockEntryItems(
     items: CreateManualStockEntryDto['items'],
   ) {
@@ -629,7 +643,7 @@ export class WarehouseService {
       throw new ResourceNotFoundException('Allocation', id);
     }
 
-    return allocation;
+    return this.serializeAllocation(allocation);
   }
 
   async listAllocations(query: ListAllocationsQueryDto) {
@@ -656,7 +670,7 @@ export class WarehouseService {
     const allocations = await qb.skip(skip).take(limit).getMany();
 
     return {
-      data: allocations,
+      data: allocations.map((allocation) => this.serializeAllocation(allocation)),
       meta: { total, page, limit, pages: Math.ceil(total / limit) },
     };
   }
@@ -665,9 +679,17 @@ export class WarehouseService {
     id: string,
     updateDto: UpdateAllocationStatusDto,
   ) {
-    const allocation = await this.getAllocation(id);
+    const allocation = await this.allocationRepository.findOne({
+      where: { id },
+    });
+
+    if (!allocation) {
+      throw new ResourceNotFoundException('Allocation', id);
+    }
+
     allocation.status = updateDto.status as AllocationStatus;
-    return this.allocationRepository.save(allocation);
+    await this.allocationRepository.save(allocation);
+    return this.getAllocation(id);
   }
 
   async createRescueSupplyOrder(

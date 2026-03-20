@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { Brackets, DataSource, Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
 import {
   Account,
@@ -211,12 +211,19 @@ export class TeamsService {
       .createQueryBuilder('allocation')
       .leftJoinAndSelect('allocation.items', 'items')
       .leftJoinAndSelect('allocation.team', 'team')
+      .leftJoinAndSelect('allocation.event', 'event')
       .leftJoinAndSelect('allocation.createdBy', 'createdBy')
       .leftJoinAndSelect('createdBy.profile', 'createdByProfile')
       .where('allocation.teamId = :teamId', { teamId: context.team.id });
 
     if (eventId) {
-      qb = qb.andWhere('allocation.eventId = :eventId', { eventId });
+      qb = qb.andWhere(
+        new Brackets((eventQuery) => {
+          eventQuery
+            .where('allocation.eventId = :eventId', { eventId })
+            .orWhere('allocation.eventId IS NULL');
+        }),
+      );
     }
 
     if (status) {
@@ -232,7 +239,7 @@ export class TeamsService {
       .getMany();
 
     return {
-      data: allocations,
+      data: allocations.map((allocation) => this.serializeTeamAllocation(allocation)),
       meta: {
         total,
         page,
@@ -244,7 +251,7 @@ export class TeamsService {
 
   async getMyTeamAllocation(accountId: string, allocationId: string) {
     const { allocation } = await this.getMyTeamAllocationContext(accountId, allocationId);
-    return allocation;
+    return this.serializeTeamAllocation(allocation);
   }
 
   async receiveMyTeamAllocation(accountId: string, allocationId: string) {
@@ -951,6 +958,20 @@ export class TeamsService {
     return true;
   }
 
+  private serializeTeamAllocation(allocation: Allocation) {
+    const createdBy = allocation.createdBy
+      ? (() => {
+          const { passwordHash, ...safeCreatedBy } = allocation.createdBy;
+          return safeCreatedBy;
+        })()
+      : null;
+
+    return {
+      ...allocation,
+      createdBy,
+    };
+  }
+
   private serializeTeamRegistrationRequest(request: TeamRegistrationRequest) {
     return {
       id: request.id,
@@ -1018,7 +1039,7 @@ export class TeamsService {
     const context = await this.getTeamAccessContext(accountId);
     const allocation = await this.allocationRepository.findOne({
       where: { id: allocationId, teamId: context.team.id },
-      relations: ['items', 'team', 'createdBy', 'createdBy.profile'],
+      relations: ['items', 'team', 'event', 'createdBy', 'createdBy.profile'],
     });
 
     if (!allocation) {
