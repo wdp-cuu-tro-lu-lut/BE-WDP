@@ -158,6 +158,11 @@ export class RescueService {
     return rescue;
   }
 
+  async getRequestDetail(id: string) {
+    const rescue = await this.getRequest(id);
+    return this.serializeRescueRequest(rescue);
+  }
+
   async listTeamReviews(
     requestId: string,
     actor: { id: string; role?: AccountRole },
@@ -332,46 +337,10 @@ export class RescueService {
 
     // Fill guestName/guestPhone từ creator nếu chưa có (request cũ)
     // Thêm thông tin phân công đội cứu trợ
-    const data = requests.map((r) => {
-      const filledGuestName =
-        r.guestName ?? r.creator?.profile?.fullName ?? null;
-      const filledGuestPhone =
-        r.guestPhone ?? r.creator?.phone ?? null;
-
-      // Tóm tắt thông tin phân công
-      const assignedTeams =
-        r.assignments && r.assignments.length > 0
-          ? r.assignments.map((a) => ({
-              assignmentId: a.id,
-              teamId: a.teamId,
-              teamName: a.team?.name ?? null,
-              area: a.team?.area ?? null,
-              teamSize: a.team?.teamSize ?? 0,
-              status: a.status,
-              respondedAt: a.respondedAt,
-            }))
-          : [];
-
-      // Bỏ creator và assignments gốc ra khỏi response
-      const { creator, assignments, ...rest } = r as any;
-
-      const acceptedCount = assignedTeams.filter(
-        (t: any) => t.status === AssignmentStatus.ACCEPTED,
-      ).length;
-
-      return {
-        ...rest,
-        guestName: filledGuestName,
-        guestPhone: filledGuestPhone,
-        assignedTeams,
-        isAssigned: assignedTeams.length > 0,
-        teamSummary: {
-          required: r.requiredTeams ?? 1,
-          assigned: assignedTeams.length,
-          accepted: acceptedCount,
-          isFulfilled: acceptedCount >= (r.requiredTeams ?? 1),
-        },
-      };
+    const data = requests.map((request) => {
+      const serialized = this.serializeRescueRequest(request) as any;
+      const { creator, assignments, ...rest } = serialized;
+      return rest;
     });
 
     return {
@@ -465,7 +434,7 @@ export class RescueService {
       });
     }
 
-    return this.getRequest(id);
+    return this.getRequestDetail(id);
   }
 
   async replaceAssignments(id: string, replaceDto: ReplaceRescueAssignmentsDto) {
@@ -566,7 +535,7 @@ export class RescueService {
       });
     });
 
-    return this.getRequest(id);
+    return this.getRequestDetail(id);
   }
 
   async getTeamAssignments(accountId: string, query: ListAssignmentsQueryDto) {
@@ -856,15 +825,50 @@ export class RescueService {
     return this.rescueRepository.save(rescue);
   }
 
+  private isActiveAssignmentStatus(status: AssignmentStatus) {
+    return ![AssignmentStatus.CANCELED, AssignmentStatus.DECLINED].includes(
+      status,
+    );
+  }
+
+  private serializeRescueRequest(rescue: RescueRequest) {
+    const assignedTeams = (rescue.assignments ?? [])
+      .filter((assignment) => this.isActiveAssignmentStatus(assignment.status))
+      .map((assignment) => ({
+        assignmentId: assignment.id,
+        teamId: assignment.teamId,
+        teamName: assignment.team?.name ?? null,
+        area: assignment.team?.area ?? null,
+        teamSize: assignment.team?.teamSize ?? 0,
+        status: assignment.status,
+        respondedAt: assignment.respondedAt,
+      }));
+
+    const acceptedCount = assignedTeams.filter(
+      (assignment) => assignment.status === AssignmentStatus.ACCEPTED,
+    ).length;
+
+    return {
+      ...rescue,
+      guestName: rescue.guestName ?? rescue.creator?.profile?.fullName ?? null,
+      guestPhone: rescue.guestPhone ?? rescue.creator?.phone ?? null,
+      assignedTeams,
+      isAssigned: assignedTeams.length > 0,
+      teamSummary: {
+        required: rescue.requiredTeams ?? 1,
+        assigned: assignedTeams.length,
+        accepted: acceptedCount,
+        isFulfilled: acceptedCount >= (rescue.requiredTeams ?? 1),
+      },
+    };
+  }
+
   private resolveRescueStatusFromAssignments(
     assignments: RescueAssignment[],
     requiredTeams: number,
   ) {
     const activeAssignments = assignments.filter(
-      (assignment) =>
-        ![AssignmentStatus.CANCELED, AssignmentStatus.DECLINED].includes(
-          assignment.status,
-        ),
+      (assignment) => this.isActiveAssignmentStatus(assignment.status),
     );
     const acceptedAssignments = activeAssignments.filter(
       (assignment) => assignment.status === AssignmentStatus.ACCEPTED,

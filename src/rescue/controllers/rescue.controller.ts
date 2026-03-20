@@ -229,7 +229,7 @@ export class RescueController {
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Get rescue request by ID' })
   async getRequest(@Param('id') id: string) {
-    return this.rescueService.getRequest(id);
+    return this.rescueService.getRequestDetail(id);
   }
 
   @Get(':id/reviews')
@@ -377,6 +377,16 @@ export class RescueController {
     @Body() createDto: CreateRescueAssignmentDto,
   ) {
     return this.rescueService.assignTeams(id, createDto);
+  }
+
+  @Get('admin/:id/assignments')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(AccountRole.ADMIN)
+  @ApiOperation({ summary: 'Get active assigned teams for request (ADMIN)' })
+  async getAssignments(@Param('id') id: string) {
+    const rescue = await this.rescueService.getRequestDetail(id);
+    return rescue.assignedTeams;
   }
 
   @Put('admin/:id/assignments')
