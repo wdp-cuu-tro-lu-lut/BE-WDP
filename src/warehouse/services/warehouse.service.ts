@@ -26,6 +26,9 @@ import {
   RescueSupplyOrder,
   RescueSupplyOrderItem,
   RescueSupplyOrderStatus,
+  RescueSupplyTeamHandoff,
+  RescueSupplyTeamHandoffItem,
+  RescueSupplyTeamHandoffStatus,
   WarehouseReceipt,
   WarehouseReceiptType,
   WarehouseReceiptItem,
@@ -42,6 +45,7 @@ import {
   CreateReceiptDto,
   CreateRescueReplenishmentRequestDto,
   CreateRescueSupplyOrderDto,
+  CreateRescueSupplyTeamHandoffDto,
   ListAllocationsQueryDto,
   ListRescueSupplyOrdersQueryDto,
   ListWarehouseTransactionsQueryDto,
@@ -139,6 +143,10 @@ export class WarehouseService {
     private rescueSupplyOrderRepository: Repository<RescueSupplyOrder>,
     @InjectRepository(RescueSupplyOrderItem)
     private rescueSupplyOrderItemRepository: Repository<RescueSupplyOrderItem>,
+    @InjectRepository(RescueSupplyTeamHandoff)
+    private rescueSupplyTeamHandoffRepository: Repository<RescueSupplyTeamHandoff>,
+    @InjectRepository(RescueSupplyTeamHandoffItem)
+    private rescueSupplyTeamHandoffItemRepository: Repository<RescueSupplyTeamHandoffItem>,
     @InjectRepository(ReplenishmentRequest)
     private replenishmentRequestRepository: Repository<ReplenishmentRequest>,
     @InjectRepository(ReplenishmentRequestItem)
@@ -833,6 +841,230 @@ export class WarehouseService {
     return this.serializeRescueSupplyOrder(order);
   }
 
+  async listRescueSupplyTeamHandoffs(orderId: string) {
+    await this.getRescueSupplyOrderEntity(orderId);
+
+    const handoffs = await this.rescueSupplyTeamHandoffRepository.find({
+      where: { orderId },
+      relations: [
+        'items',
+        'items.orderItem',
+        'items.category',
+        'assignment',
+        'team',
+        'dispatchedBy',
+        'dispatchedBy.profile',
+        'receivedBy',
+        'receivedBy.profile',
+      ],
+      order: {
+        dispatchedAt: 'DESC',
+        createdAt: 'DESC',
+      },
+    });
+
+    return {
+      data: handoffs.map((handoff) => this.serializeRescueSupplyTeamHandoff(handoff)),
+    };
+  }
+
+  async listAssignmentSupplyHandoffs(assignmentId: string) {
+    const handoffs = await this.rescueSupplyTeamHandoffRepository.find({
+      where: { assignmentId },
+      relations: [
+        'items',
+        'items.orderItem',
+        'items.category',
+        'team',
+        'order',
+        'order.rescueRequest',
+        'dispatchedBy',
+        'dispatchedBy.profile',
+        'receivedBy',
+        'receivedBy.profile',
+      ],
+      order: {
+        dispatchedAt: 'DESC',
+        createdAt: 'DESC',
+      },
+    });
+
+    return {
+      data: handoffs.map((handoff) => this.serializeRescueSupplyTeamHandoff(handoff)),
+    };
+  }
+
+  async hasReceivedAssignmentSupplies(assignmentId: string) {
+    const total = await this.rescueSupplyTeamHandoffRepository.count({
+      where: {
+        assignmentId,
+        status: RescueSupplyTeamHandoffStatus.RECEIVED,
+      },
+    });
+
+    return total > 0;
+  }
+
+  async createRescueSupplyTeamHandoff(
+    orderId: string,
+    dispatchedById: string,
+    createDto: CreateRescueSupplyTeamHandoffDto,
+  ) {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const order = await queryRunner.manager.findOne(RescueSupplyOrder, {
+        where: { id: orderId },
+        relations: ['items', 'rescueRequest', 'rescueRequest.assignments'],
+      });
+
+      if (!order) {
+        throw new ResourceNotFoundException('Rescue supply order', orderId);
+      }
+
+      if (order.status !== RescueSupplyOrderStatus.DISPATCHED) {
+        throw new ConflictException(
+          'Only dispatched rescue supply orders can be handed off to teams',
+        );
+      }
+
+      const assignment = order.rescueRequest.assignments.find(
+        (candidate) => candidate.id === createDto.assignmentId,
+      );
+
+      if (!assignment) {
+        throw new ResourceNotFoundException('Assignment', createDto.assignmentId);
+      }
+
+      if (assignment.status !== AssignmentStatus.ACCEPTED) {
+        throw new ConflictException(
+          'Supplies can only be handed off to accepted or active rescue teams',
+        );
+      }
+
+      const mergedItems = this.mergeRescueSupplyTeamHandoffItems(createDto.items);
+      const orderItemMap = new Map(order.items.map((item) => [item.id, item]));
+
+      const activeHandoffs = await queryRunner.manager.find(RescueSupplyTeamHandoff, {
+        where: {
+          orderId,
+          status: In([
+            RescueSupplyTeamHandoffStatus.PENDING_RECEIPT,
+            RescueSupplyTeamHandoffStatus.RECEIVED,
+          ]),
+        },
+        relations: ['items'],
+      });
+
+      const allocatedByOrderItem = new Map<string, number>();
+      for (const handoff of activeHandoffs) {
+        for (const item of handoff.items ?? []) {
+          allocatedByOrderItem.set(
+            item.orderItemId,
+            (allocatedByOrderItem.get(item.orderItemId) ?? 0) + item.quantity,
+          );
+        }
+      }
+
+      for (const item of mergedItems) {
+        const orderItem = orderItemMap.get(item.orderItemId);
+        if (!orderItem) {
+          throw new ResourceNotFoundException('Rescue supply order item', item.orderItemId);
+        }
+
+        const availableToHandoff =
+          orderItem.dispatchedQuantity -
+          orderItem.returnedQuantity -
+          (allocatedByOrderItem.get(item.orderItemId) ?? 0);
+
+        if (item.quantity > availableToHandoff) {
+          throw new ConflictException(
+            `Handoff quantity exceeds dispatched balance for item ${item.orderItemId}`,
+          );
+        }
+      }
+
+      const handoff = queryRunner.manager.create(RescueSupplyTeamHandoff, {
+        orderId,
+        assignmentId: assignment.id,
+        teamId: assignment.teamId,
+        dispatchedById,
+        receivedById: null,
+        status: RescueSupplyTeamHandoffStatus.PENDING_RECEIPT,
+        note: createDto.note?.trim() || null,
+        dispatchedAt: new Date(),
+        receivedAt: null,
+      });
+      const savedHandoff = await queryRunner.manager.save(handoff);
+
+      const handoffItems = mergedItems.map((item) => {
+        const orderItem = orderItemMap.get(item.orderItemId)!;
+
+        return queryRunner.manager.create(RescueSupplyTeamHandoffItem, {
+          handoffId: savedHandoff.id,
+          orderItemId: orderItem.id,
+          categoryId: orderItem.categoryId,
+          itemType: orderItem.itemType,
+          quantity: item.quantity,
+          returnedQuantity: 0,
+        });
+      });
+      await queryRunner.manager.save(handoffItems);
+
+      await queryRunner.commitTransaction();
+      return this.getRescueSupplyTeamHandoff(savedHandoff.id);
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      throw err;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  async receiveTeamHandoff(
+    assignmentId: string,
+    handoffId: string,
+    receivedById: string,
+  ) {
+    const handoff = await this.rescueSupplyTeamHandoffRepository.findOne({
+      where: { id: handoffId, assignmentId },
+      relations: [
+        'items',
+        'items.orderItem',
+        'items.category',
+        'assignment',
+        'team',
+        'order',
+        'order.rescueRequest',
+        'dispatchedBy',
+        'dispatchedBy.profile',
+        'receivedBy',
+        'receivedBy.profile',
+      ],
+    });
+
+    if (!handoff) {
+      throw new ResourceNotFoundException('Rescue supply team handoff', handoffId);
+    }
+
+    if (handoff.status === RescueSupplyTeamHandoffStatus.RECEIVED) {
+      return this.serializeRescueSupplyTeamHandoff(handoff);
+    }
+
+    if (handoff.status !== RescueSupplyTeamHandoffStatus.PENDING_RECEIPT) {
+      throw new ConflictException('This handoff cannot be marked as received');
+    }
+
+    handoff.status = RescueSupplyTeamHandoffStatus.RECEIVED;
+    handoff.receivedById = receivedById;
+    handoff.receivedAt = new Date();
+    await this.rescueSupplyTeamHandoffRepository.save(handoff);
+
+    return this.getRescueSupplyTeamHandoff(handoff.id);
+  }
+
   async checkRescueSupplyOrderStock(id: string) {
     const order = await this.getRescueSupplyOrderEntity(id);
 
@@ -1310,6 +1542,42 @@ export class WarehouseService {
     }
   }
 
+  async returnAssignmentSuppliesForIncident(
+    assignmentId: string,
+    performedById: string,
+    incidentNote: string,
+    manager?: EntityManager,
+  ) {
+    if (manager) {
+      return this.returnAssignmentSuppliesForIncidentWithManager(
+        manager,
+        assignmentId,
+        performedById,
+        incidentNote,
+      );
+    }
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const order = await this.returnAssignmentSuppliesForIncidentWithManager(
+        queryRunner.manager,
+        assignmentId,
+        performedById,
+        incidentNote,
+      );
+      await queryRunner.commitTransaction();
+      return order;
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      throw err;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
   async listTransactions(query: ListWarehouseTransactionsQueryDto) {
     const {
       source,
@@ -1528,8 +1796,221 @@ export class WarehouseService {
     return this.getRescueSupplyOrder(order.id);
   }
 
-  private async serializeRescueSupplyOrder(order: RescueSupplyOrder) {
-    const availability = await this.getStockAvailabilityForOrder(order);
+  private async returnAssignmentSuppliesForIncidentWithManager(
+    manager: EntityManager,
+    assignmentId: string,
+    performedById: string,
+    incidentNote: string,
+  ) {
+    const handoffs = await manager.find(RescueSupplyTeamHandoff, {
+      where: {
+        assignmentId,
+        status: In([
+          RescueSupplyTeamHandoffStatus.PENDING_RECEIPT,
+          RescueSupplyTeamHandoffStatus.RECEIVED,
+        ]),
+      },
+      relations: ['items', 'items.orderItem', 'order'],
+      order: { createdAt: 'DESC' },
+    });
+
+    if (handoffs.length === 0) {
+      return null;
+    }
+
+    const impactedOrderIds = new Set<string>();
+
+    for (const handoff of handoffs) {
+      impactedOrderIds.add(handoff.orderId);
+
+      for (const item of handoff.items ?? []) {
+        const remainingReturnable = item.quantity - item.returnedQuantity;
+
+        if (remainingReturnable <= 0) {
+          continue;
+        }
+
+        let stock = await manager.findOne(WarehouseStock, {
+          where: {
+            categoryId: item.categoryId,
+            condition: ItemCondition.GOOD,
+          },
+        });
+        const balanceBefore = stock?.quantity ?? 0;
+
+        if (!stock) {
+          stock = manager.create(WarehouseStock, {
+            categoryId: item.categoryId,
+            condition: ItemCondition.GOOD,
+            quantity: 0,
+          });
+        }
+
+        stock.quantity += remainingReturnable;
+        await manager.save(stock);
+
+        item.returnedQuantity += remainingReturnable;
+        await manager.save(item);
+
+        if (item.orderItem) {
+          item.orderItem.returnedQuantity += remainingReturnable;
+          await manager.save(item.orderItem);
+        }
+
+        await this.recordWarehouseTransaction(manager, {
+          categoryId: item.categoryId,
+          performedById,
+          type: WarehouseTransactionType.IN,
+          source: WarehouseTransactionSource.RESCUE_RETURN,
+          referenceId: handoff.orderId,
+          quantity: remainingReturnable,
+          balanceBefore,
+          balanceAfter: stock.quantity,
+          note: `Incident return for assignment ${assignmentId}: ${incidentNote}`,
+        });
+      }
+
+      handoff.status = RescueSupplyTeamHandoffStatus.CANCELED;
+      await manager.save(handoff);
+    }
+
+    for (const orderId of impactedOrderIds) {
+      const order = await manager.findOne(RescueSupplyOrder, {
+        where: { id: orderId },
+        relations: ['items'],
+      });
+
+      if (!order) {
+        continue;
+      }
+
+      const allReturned = (order.items ?? []).every(
+        (item) => item.dispatchedQuantity <= item.returnedQuantity,
+      );
+
+      if (allReturned) {
+        order.status = RescueSupplyOrderStatus.COMPLETED;
+        order.completedAt = new Date();
+        order.note = `Incident return: ${incidentNote}`;
+        await manager.save(order);
+      }
+    }
+
+    const [latestOrderId] = [...impactedOrderIds];
+
+    if (!latestOrderId) {
+      return null;
+    }
+
+    const latestOrder = await manager.findOne(RescueSupplyOrder, {
+      where: { id: latestOrderId },
+      relations: [
+        'items',
+        'items.category',
+        'rescueRequest',
+        'rescueRequest.assignments',
+        'rescueRequest.assignments.team',
+        'replenishmentRequests',
+      ],
+    });
+
+    return latestOrder ? this.serializeRescueSupplyOrder(latestOrder, manager) : null;
+  }
+
+  private async getRescueSupplyTeamHandoff(id: string) {
+    const handoff = await this.getRescueSupplyTeamHandoffEntity(id);
+    return this.serializeRescueSupplyTeamHandoff(handoff);
+  }
+
+  private async getRescueSupplyTeamHandoffEntity(id: string) {
+    const handoff = await this.rescueSupplyTeamHandoffRepository.findOne({
+      where: { id },
+      relations: [
+        'items',
+        'items.orderItem',
+        'items.category',
+        'assignment',
+        'team',
+        'order',
+        'order.rescueRequest',
+        'dispatchedBy',
+        'dispatchedBy.profile',
+        'receivedBy',
+        'receivedBy.profile',
+      ],
+    });
+
+    if (!handoff) {
+      throw new ResourceNotFoundException('Rescue supply team handoff', id);
+    }
+
+    return handoff;
+  }
+
+  private serializeRescueSupplyTeamHandoff(handoff: RescueSupplyTeamHandoff) {
+    return {
+      ...handoff,
+      dispatchedBy: this.sanitizeAccount(handoff.dispatchedBy),
+      receivedBy: this.sanitizeAccount(handoff.receivedBy),
+      rescueRequest: handoff.order?.rescueRequest
+        ? {
+            id: handoff.order.rescueRequest.id,
+            status: handoff.order.rescueRequest.status,
+            priority: handoff.order.rescueRequest.priority,
+            address: handoff.order.rescueRequest.address,
+          }
+        : null,
+      items: (handoff.items ?? []).map((item) => ({
+        ...item,
+        categoryName: item.category?.name ?? null,
+        orderItem: item.orderItem
+          ? {
+              id: item.orderItem.id,
+              requestedQuantity: item.orderItem.requestedQuantity,
+              dispatchedQuantity: item.orderItem.dispatchedQuantity,
+              returnedQuantity: item.orderItem.returnedQuantity,
+            }
+          : null,
+      })),
+    };
+  }
+
+  private sanitizeAccount(account: { passwordHash?: string } | null | undefined) {
+    if (!account) {
+      return null;
+    }
+
+    const { passwordHash, ...safeAccount } = account;
+    return safeAccount;
+  }
+
+  private mergeRescueSupplyTeamHandoffItems(
+    items: CreateRescueSupplyTeamHandoffDto['items'],
+  ) {
+    const grouped = new Map<string, CreateRescueSupplyTeamHandoffDto['items'][number]>();
+
+    for (const item of items) {
+      const existing = grouped.get(item.orderItemId);
+
+      if (existing) {
+        existing.quantity += item.quantity;
+        continue;
+      }
+
+      grouped.set(item.orderItemId, {
+        orderItemId: item.orderItemId,
+        quantity: item.quantity,
+      });
+    }
+
+    return [...grouped.values()];
+  }
+
+  private async serializeRescueSupplyOrder(
+    order: RescueSupplyOrder,
+    manager: EntityManager = this.dataSource.manager,
+  ) {
+    const availability = await this.getStockAvailabilityForOrder(order, manager);
     const teams = (order.rescueRequest?.assignments ?? [])
       .filter(
         (assignment) =>

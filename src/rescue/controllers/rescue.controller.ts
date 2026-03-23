@@ -441,6 +441,25 @@ export class TeamAssignmentController {
     return this.rescueService.updateProgress(user.id, id, updateDto);
   }
 
+  @Get(':id/supplies')
+  @ApiOperation({ summary: 'Get rescue supplies assigned to my team assignment' })
+  async getAssignmentSupplies(
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+  ) {
+    return this.rescueService.getAssignmentSupplies(user.id, id);
+  }
+
+  @Post(':id/supplies/:handoffId/receive')
+  @ApiOperation({ summary: 'Confirm my team has received a dispatched rescue supply handoff' })
+  async receiveAssignmentSupply(
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @Param('handoffId') handoffId: string,
+  ) {
+    return this.rescueService.receiveAssignmentSupply(user.id, id, handoffId);
+  }
+
   @Patch(':id/report-incident')
   @ApiOperation({ summary: 'Report incident and cancel assignment (RESCUE_TEAM)' })
   async reportIncident(

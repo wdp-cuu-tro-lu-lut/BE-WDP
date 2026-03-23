@@ -614,6 +614,20 @@ export class RescueService {
     return this.assignmentRepository.save(assignment);
   }
 
+  async getAssignmentSupplies(accountId: string, assignmentId: string) {
+    await this.getAssignmentForTeamAccount(accountId, assignmentId, ['team', 'rescueRequest']);
+    return this.warehouseService.listAssignmentSupplyHandoffs(assignmentId);
+  }
+
+  async receiveAssignmentSupply(
+    accountId: string,
+    assignmentId: string,
+    handoffId: string,
+  ) {
+    await this.getAssignmentForTeamAccount(accountId, assignmentId, ['team', 'rescueRequest']);
+    return this.warehouseService.receiveTeamHandoff(assignmentId, handoffId, accountId);
+  }
+
   async updateProgress(
     accountId: string,
     assignmentId: string,
@@ -644,6 +658,17 @@ export class RescueService {
       throw new ConflictException(
         `Cannot transition to ${updateDto.status}`,
       );
+    }
+
+    if (canStartWork) {
+      const hasReceivedSupplies =
+        await this.warehouseService.hasReceivedAssignmentSupplies(assignment.id);
+
+      if (!hasReceivedSupplies) {
+        throw new ConflictException(
+          'Team cannot start rescue before receiving assigned supplies',
+        );
+      }
     }
 
     request.status = updateDto.status;
@@ -697,8 +722,8 @@ export class RescueService {
         );
       }
 
-      const returnedOrder = await this.warehouseService.returnDispatchedRescueOrderForIncident(
-        assignment.rescueRequestId,
+      const returnedOrder = await this.warehouseService.returnAssignmentSuppliesForIncident(
+        assignment.id,
         accountId,
         incidentNote,
         manager,
@@ -714,13 +739,15 @@ export class RescueService {
           currentAssignment.id === assignment.id ? assignment : currentAssignment,
       );
 
-      assignment.rescueRequest.status = this.resolveRescueStatusFromAssignments(
+      const nextRescueStatus = this.resolveRescueStatusFromAssignments(
         updatedAssignments,
         assignment.rescueRequest.requiredTeams ?? 1,
       );
 
       await assignmentRepository.save(assignment);
-      await rescueRepository.save(assignment.rescueRequest);
+      await rescueRepository.update(assignment.rescueRequestId, {
+        status: nextRescueStatus,
+      });
 
       return {
         assignment: await assignmentRepository.findOne({

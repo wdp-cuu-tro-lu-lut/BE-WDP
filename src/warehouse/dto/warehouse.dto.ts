@@ -249,6 +249,52 @@ export class CreateRescueSupplyOrderDto {
   note?: string;
 }
 
+export class CreateRescueSupplyTeamHandoffItemDto {
+  @ApiProperty({
+    example: '550e8400-e29b-41d4-a716-446655440012',
+    description: 'ID item của phiếu vật phẩm rescue order',
+  })
+  @IsUUID()
+  orderItemId!: string;
+
+  @ApiProperty({
+    example: 6,
+    description: 'Số lượng staff bàn giao cho team ở đợt này',
+  })
+  @IsInt()
+  @Min(1)
+  quantity!: number;
+}
+
+export class CreateRescueSupplyTeamHandoffDto {
+  @ApiProperty({
+    example: '550e8400-e29b-41d4-a716-446655440099',
+    description: 'Assignment ID của team sẽ nhận vật phẩm',
+  })
+  @IsUUID()
+  assignmentId!: string;
+
+  @ApiProperty({
+    example: 'Bàn giao đợt 1 cho đội số 2 tại điểm tập kết',
+    description: 'Ghi chú bàn giao nội bộ',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  note?: string;
+
+  @ApiProperty({
+    type: CreateRescueSupplyTeamHandoffItemDto,
+    isArray: true,
+    description: 'Danh sách vật phẩm staff bàn giao cho team',
+  })
+  @IsArray()
+  @ArrayNotEmpty()
+  @ValidateNested({ each: true })
+  @Type(() => CreateRescueSupplyTeamHandoffItemDto)
+  items!: CreateRescueSupplyTeamHandoffItemDto[];
+}
+
 export class ListRescueSupplyOrdersQueryDto {
   @ApiProperty({
     example: '550e8400-e29b-41d4-a716-446655440010',

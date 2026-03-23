@@ -20,6 +20,7 @@ import {
   UpdateAllocationStatusDto,
   ListAllocationsQueryDto,
   CreateRescueSupplyOrderDto,
+  CreateRescueSupplyTeamHandoffDto,
   ListRescueSupplyOrdersQueryDto,
   CreateRescueReplenishmentRequestDto,
   ReviewReplenishmentRequestDto,
@@ -111,6 +112,12 @@ export class WarehouseController {
     return this.warehouseService.getRescueSupplyOrder(id);
   }
 
+  @Get('rescue-orders/:id/team-handoffs')
+  @ApiOperation({ summary: 'Danh sách bàn giao vật phẩm cho từng team của phiếu' })
+  async listRescueSupplyTeamHandoffs(@Param('id') id: string) {
+    return this.warehouseService.listRescueSupplyTeamHandoffs(id);
+  }
+
   @Post('rescue-orders/:id/check-stock')
   @ApiOperation({ summary: 'Kiểm tra kho cho phiếu vật phẩm' })
   async checkRescueSupplyOrderStock(@Param('id') id: string) {
@@ -124,6 +131,16 @@ export class WarehouseController {
     @Param('id') id: string,
   ) {
     return this.warehouseService.dispatchRescueSupplyOrder(id, user.id);
+  }
+
+  @Post('rescue-orders/:id/team-handoffs')
+  @ApiOperation({ summary: 'Staff bàn giao vật phẩm rescue cho một team cụ thể' })
+  async createRescueSupplyTeamHandoff(
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @Body() createDto: CreateRescueSupplyTeamHandoffDto,
+  ) {
+    return this.warehouseService.createRescueSupplyTeamHandoff(id, user.id, createDto);
   }
 
   @Post('rescue-orders/:id/replenishment-requests')

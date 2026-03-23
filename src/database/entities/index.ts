@@ -25,6 +25,8 @@ export { AllocationItem } from './allocation-item.entity';
 export * from './rescue-supply-order.entity';
 export * from './rescue-supply-item-type.enum';
 export * from './rescue-supply-order-item.entity';
+export * from './rescue-supply-team-handoff.entity';
+export * from './rescue-supply-team-handoff-item.entity';
 export * from './replenishment-request.entity';
 export * from './replenishment-request-item.entity';
 export * from './warehouse-transaction.entity';
