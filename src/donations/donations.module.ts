@@ -7,9 +7,14 @@ import {
   AdminDonationsController,
 } from '@/donations/controllers';
 import { CommonModule } from '@/common/common.module';
+import { DashboardModule } from '@/dashboard/dashboard.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Donation, DonationItem, Category]), CommonModule],
+  imports: [
+    TypeOrmModule.forFeature([Donation, DonationItem, Category]),
+    CommonModule,
+    DashboardModule,
+  ],
   providers: [DonationsService],
   controllers: [DonationsController, AdminDonationsController],
   exports: [DonationsService],

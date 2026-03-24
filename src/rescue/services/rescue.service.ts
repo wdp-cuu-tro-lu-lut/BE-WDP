@@ -41,6 +41,7 @@ import {
 } from '@/rescue/helpers';
 import { WarehouseService } from '@/warehouse/services';
 import { RealtimeNotificationService } from '@/common/services/realtime-notification.service';
+import { StaffNotificationService } from '@/dashboard/services';
 
 @Injectable()
 export class RescueService {
@@ -61,6 +62,7 @@ export class RescueService {
     private teamReviewRepository: Repository<TeamReview>,
     private warehouseService: WarehouseService,
     private realtimeNotificationService: RealtimeNotificationService,
+    private staffNotificationService: StaffNotificationService,
   ) {}
 
   async createRequest(creatorId: string, createDto: CreateRescueRequestDto) {
@@ -392,6 +394,22 @@ export class RescueService {
     });
   }
 
+  private async notifyStaffAboutAcceptedAssignment(assignmentId: string) {
+    const assignment = await this.assignmentRepository.findOne({
+      where: { id: assignmentId },
+      relations: ['team', 'rescueRequest'],
+    });
+
+    if (!assignment?.team || !assignment.rescueRequest) {
+      return;
+    }
+
+    await this.staffNotificationService.createRescueAssignmentAcceptedNotifications(
+      assignment,
+    );
+    this.realtimeNotificationService.notifyRescueAssignmentAccepted(assignment);
+  }
+
   async assignTeams(id: string, createDto: CreateRescueAssignmentDto) {
     const rescue = await this.getRequest(id);
 
@@ -611,7 +629,13 @@ export class RescueService {
       // Chưa đủ team — giữ nguyên status ASSIGNED, chờ thêm team accept
     }
 
-    return this.assignmentRepository.save(assignment);
+    const savedAssignment = await this.assignmentRepository.save(assignment);
+
+    if (savedAssignment.status === AssignmentStatus.ACCEPTED) {
+      await this.notifyStaffAboutAcceptedAssignment(savedAssignment.id);
+    }
+
+    return savedAssignment;
   }
 
   async getAssignmentSupplies(accountId: string, assignmentId: string) {

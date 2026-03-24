@@ -8,6 +8,7 @@ import {
   Event,
   ReplenishmentRequest,
   RescueRequest,
+  StaffNotification,
   VolunteerRegistration,
   WarehouseStock,
 } from '@/database/entities';
@@ -15,7 +16,7 @@ import {
   DashboardController,
   StaffDashboardController,
 } from '@/dashboard/controllers';
-import { DashboardService } from '@/dashboard/services';
+import { DashboardService, StaffNotificationService } from '@/dashboard/services';
 
 @Module({
   imports: [
@@ -27,12 +28,13 @@ import { DashboardService } from '@/dashboard/services';
       Event,
       ReplenishmentRequest,
       RescueRequest,
+      StaffNotification,
       VolunteerRegistration,
       WarehouseStock,
     ]),
   ],
-  providers: [DashboardService],
+  providers: [DashboardService, StaffNotificationService],
   controllers: [DashboardController, StaffDashboardController],
-  exports: [DashboardService],
+  exports: [DashboardService, StaffNotificationService],
 })
 export class DashboardModule {}

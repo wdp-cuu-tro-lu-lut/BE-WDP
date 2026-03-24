@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { CommonModule } from '@/common/common.module';
 import {
   Account,
   Allocation,
@@ -13,6 +14,7 @@ import {
   TeamVehicle,
   VehicleType,
 } from '@/database/entities';
+import { DashboardModule } from '@/dashboard/dashboard.module';
 import { TeamsService } from '@/teams/services';
 import {
   TeamRegistrationRequestsController,
@@ -22,6 +24,8 @@ import {
 
 @Module({
   imports: [
+    CommonModule,
+    DashboardModule,
     TypeOrmModule.forFeature([
       Team,
       Account,

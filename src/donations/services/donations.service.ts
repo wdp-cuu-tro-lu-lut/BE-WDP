@@ -24,6 +24,7 @@ import {
   ConflictException,
 } from '@/common/exceptions';
 import { RealtimeNotificationService } from '@/common/services/realtime-notification.service';
+import { StaffNotificationService } from '@/dashboard/services';
 
 @Injectable()
 export class DonationsService {
@@ -35,6 +36,7 @@ export class DonationsService {
     @InjectRepository(Category)
     private categoryRepository: Repository<Category>,
     private realtimeNotificationService: RealtimeNotificationService,
+    private staffNotificationService: StaffNotificationService,
   ) {}
 
   async createDonation(eventId: string, creatorId: string, createDto: CreateDonationDto) {
@@ -78,6 +80,11 @@ export class DonationsService {
       .where('donation.status = :status', { status: DonationStatus.SUBMITTED })
       .andWhere('donation.deletedAt IS NULL')
       .getCount();
+
+    await this.staffNotificationService.createPendingDonationCreatedNotifications(
+      saved,
+      pendingProductsCount,
+    );
 
     this.realtimeNotificationService.notifyPendingDonationCreated(
       saved,

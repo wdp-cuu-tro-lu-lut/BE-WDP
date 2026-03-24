@@ -58,6 +58,7 @@ import {
   ResourceNotFoundException,
 } from '@/common/exceptions';
 import { RealtimeNotificationService } from '@/common/services/realtime-notification.service';
+import { StaffNotificationService } from '@/dashboard/services';
 
 type SupplyFormula = {
   waterPerPerson: number;
@@ -155,6 +156,7 @@ export class WarehouseService {
     private warehouseTransactionRepository: Repository<WarehouseTransaction>,
     private dataSource: DataSource,
     private realtimeNotificationService: RealtimeNotificationService,
+    private staffNotificationService: StaffNotificationService,
   ) {}
 
   async getStats(): Promise<WarehouseStatsDto> {
@@ -1281,6 +1283,11 @@ export class WarehouseService {
       await this.replenishmentRequestRepository.count({
         where: { status: ReplenishmentRequestStatus.PENDING },
       });
+
+    await this.staffNotificationService.createReplenishmentRequestCreatedNotifications(
+      savedRequest,
+      pendingReplenishmentRequests,
+    );
 
     this.realtimeNotificationService.notifyReplenishmentRequestCreated(
       savedRequest,

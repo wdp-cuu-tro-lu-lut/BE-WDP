@@ -40,6 +40,8 @@ import {
   ConflictException,
   ResourceNotFoundException,
 } from '@/common/exceptions';
+import { RealtimeNotificationService } from '@/common/services/realtime-notification.service';
+import { StaffNotificationService } from '@/dashboard/services';
 
 @Injectable()
 export class TeamsService {
@@ -61,6 +63,8 @@ export class TeamsService {
     @InjectRepository(TeamRegistrationRequest)
     private teamRegistrationRequestRepository: Repository<TeamRegistrationRequest>,
     private dataSource: DataSource,
+    private readonly realtimeNotificationService: RealtimeNotificationService,
+    private readonly staffNotificationService: StaffNotificationService,
   ) {}
 
   async createTeamRegistrationRequest(
@@ -96,6 +100,14 @@ export class TeamsService {
     });
 
     const savedRequest = await this.teamRegistrationRequestRepository.save(request);
+
+    await this.staffNotificationService.createTeamRegistrationRequestCreatedNotifications(
+      savedRequest,
+    );
+    this.realtimeNotificationService.notifyTeamRegistrationRequestCreated(
+      savedRequest,
+    );
+
     return this.getTeamRegistrationRequest(savedRequest.id);
   }
 

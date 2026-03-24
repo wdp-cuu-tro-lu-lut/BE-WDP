@@ -95,6 +95,10 @@ export class RealtimeGateway
     this.server.to(this.getRoleRoom(AccountRole.ADMIN)).emit(event, payload);
   }
 
+  emitToAdmin(event: string, payload: unknown) {
+    this.server.to(this.getRoleRoom(AccountRole.ADMIN)).emit(event, payload);
+  }
+
   getConnectionStats() {
     return {
       namespace: '/realtime',

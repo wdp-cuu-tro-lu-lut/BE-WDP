@@ -14,6 +14,7 @@ import { RescueController, TeamAssignmentController } from '@/rescue/controllers
 import { FilesModule } from '@/files/files.module';
 import { WarehouseModule } from '@/warehouse/warehouse.module';
 import { CommonModule } from '@/common/common.module';
+import { DashboardModule } from '@/dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { CommonModule } from '@/common/common.module';
     FilesModule,
     WarehouseModule,
     CommonModule,
+    DashboardModule,
   ],
   providers: [RescueService],
   controllers: [RescueController, TeamAssignmentController],

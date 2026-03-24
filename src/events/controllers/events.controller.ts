@@ -7,9 +7,11 @@ import {
   Body,
   Param,
   Query,
+  Res,
   UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiProduces } from '@nestjs/swagger';
+import { Response } from 'express';
 import { JwtAuthGuard, RolesGuard, Roles, CurrentUser } from '@/common';
 import { AccountRole } from '@/database/entities';
 import { EventsService } from '@/events/services';
@@ -108,5 +110,37 @@ export class EventsController {
     @Query('limit') limit?: number,
   ) {
     return this.eventsService.getEventVolunteers(id, page, limit);
+  }
+
+  @Get(':id/volunteer-registrations/export/excel')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(AccountRole.STAFF, AccountRole.ADMIN)
+  @ApiProduces('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+  @ApiOperation({ summary: 'Export event volunteers to Excel (STAFF/ADMIN)' })
+  async exportEventVolunteersExcel(
+    @Param('id') id: string,
+    @Res() res: Response,
+  ) {
+    const { buffer, fileName } = await this.eventsService.exportEventVolunteersExcel(id);
+    const asciiFallbackFileName = fileName
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^\x20-\x7E]/g, '-')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-+|-+$/g, '');
+    const encodedFileName = encodeURIComponent(fileName);
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${asciiFallbackFileName}"; filename*=UTF-8''${encodedFileName}`,
+    );
+    res.setHeader('Content-Length', buffer.length.toString());
+    res.send(buffer);
   }
 }

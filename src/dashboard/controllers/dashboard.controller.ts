@@ -6,18 +6,20 @@ import {
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
-import { Roles, RolesGuard, JwtAuthGuard } from '@/common';
+import { CurrentUser, Roles, RolesGuard, JwtAuthGuard } from '@/common';
 import {
   RealtimeNotificationService,
   StaffRealtimePayload,
 } from '@/common/services/realtime-notification.service';
-import { AccountRole } from '@/database/entities';
+import { AccountRole, StaffNotificationCategory } from '@/database/entities';
 import {
   AdminDashboardOverviewDto,
+  MarkStaffNotificationsReadDto,
   StaffDashboardOverviewDto,
+  StaffNotificationUnreadSummaryDto,
   TriggerStaffRealtimeNotificationDto,
 } from '@/dashboard/dto';
-import { DashboardService } from '@/dashboard/services';
+import { DashboardService, StaffNotificationService } from '@/dashboard/services';
 
 @Controller('admin/dashboard')
 @ApiTags('Admin / Dashboard')
@@ -126,12 +128,66 @@ export class DashboardController {
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(AccountRole.ADMIN, AccountRole.STAFF)
 export class StaffDashboardController {
-  constructor(private readonly dashboardService: DashboardService) {}
+  constructor(
+    private readonly dashboardService: DashboardService,
+    private readonly staffNotificationService: StaffNotificationService,
+  ) {}
 
   @Get('stats')
   @ApiOperation({ summary: 'Get staff dashboard stats' })
   @ApiOkResponse({ type: StaffDashboardOverviewDto })
   async getStats(): Promise<StaffDashboardOverviewDto> {
     return this.dashboardService.getStaffOverview();
+  }
+
+  @Get('notifications/unread-summary')
+  @ApiOperation({ summary: 'Get unread realtime notification summary for the current staff/admin account' })
+  @ApiOkResponse({ type: StaffNotificationUnreadSummaryDto })
+  async getUnreadNotificationSummary(
+    @CurrentUser() user: any,
+  ): Promise<StaffNotificationUnreadSummaryDto> {
+    return this.staffNotificationService.getUnreadSummary(user.id);
+  }
+
+  @Post('notifications/mark-read')
+  @ApiOperation({ summary: 'Mark staff/admin realtime notifications as read by category' })
+  @ApiOkResponse({
+    schema: {
+      example: {
+        updatedCount: 2,
+        readAt: '2026-03-24T09:00:00.000Z',
+        unreadSummary: {
+          totalUnread: 0,
+          productsUnread: 0,
+          rescueRequestsUnread: 0,
+          replenishmentRequestsUnread: 0,
+          teamRegistrationRequestsUnread: 0,
+        },
+      },
+    },
+  })
+  async markNotificationsAsRead(
+    @CurrentUser() user: any,
+    @Body() body: MarkStaffNotificationsReadDto,
+  ) {
+    const result = await this.staffNotificationService.markCategoryAsRead(
+      user.id,
+      body.category,
+    );
+    const unreadSummary = await this.staffNotificationService.getUnreadSummary(
+      user.id,
+    );
+
+    return {
+      ...result,
+      unreadSummary,
+      category: body.category,
+      isRescueCategory: body.category === StaffNotificationCategory.RESCUE_REQUESTS,
+      isProductsCategory: body.category === StaffNotificationCategory.PRODUCTS,
+      isReplenishmentCategory:
+        body.category === StaffNotificationCategory.REPLENISHMENT_REQUESTS,
+      isTeamRegistrationCategory:
+        body.category === StaffNotificationCategory.TEAM_REGISTRATION_REQUESTS,
+    };
   }
 }

@@ -26,7 +26,13 @@
     "migration:generate:js": "npm run build && node node_modules/typeorm/cli.js migration:generate -d ./dist/data-source.js",
     "migration:run:js": "npm run build && node node_modules/typeorm/cli.js migration:run -d ./dist/data-source.js",
     "seed": "node dist/scripts/seed.js",
-    "seed:manual-stock": "npx ts-node -r tsconfig-paths/register src/scripts/seed-manual-stock-entry.ts"
+    "seed:manual-stock": "npx ts-node -r tsconfig-paths/register src/scripts/seed-manual-stock-entry.ts",
+    "seed:staff-rescue-notification": "npx ts-node -r tsconfig-paths/register src/scripts/seed-staff-rescue-notification.ts",
+    "test:staff-product-notification": "powershell -ExecutionPolicy Bypass -File .\\scripts\\test-real-staff-product-notification.ps1",
+    "test:admin-rescue-notification": "powershell -ExecutionPolicy Bypass -File .\\scripts\\test-real-admin-rescue-notification.ps1",
+    "test:admin-team-registration-notification": "powershell -ExecutionPolicy Bypass -File .\\scripts\\test-real-admin-team-registration-notification.ps1",
+    "test:admin-replenishment-notification": "powershell -ExecutionPolicy Bypass -File .\\scripts\\test-real-admin-replenishment-notification.ps1",
+    "test:staff-volunteer-export": "powershell -ExecutionPolicy Bypass -File .\\scripts\\test-staff-volunteer-export.ps1"
   },
   "dependencies": {
     "@nestjs/common": "^10.3.0",
@@ -43,6 +49,7 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.0",
     "dotenv": "^16.3.1",
+    "exceljs": "^4.4.0",
     "minio": "^8.0.7",
     "mysql2": "^2.3.3",
     "passport": "^0.7.0",

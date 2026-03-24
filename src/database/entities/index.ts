@@ -29,5 +29,6 @@ export * from './rescue-supply-team-handoff.entity';
 export * from './rescue-supply-team-handoff-item.entity';
 export * from './replenishment-request.entity';
 export * from './replenishment-request-item.entity';
+export * from './staff-notification.entity';
 export * from './warehouse-transaction.entity';
 export * from './verification.entity';
