@@ -773,15 +773,38 @@ export class RescueService {
         status: nextRescueStatus,
       });
 
+      const updatedAssignment = await assignmentRepository.findOne({
+        where: { id: assignment.id },
+        relations: ['team', 'rescueRequest'],
+      });
+
+      const updatedRescueRequest = await rescueRepository.findOne({
+        where: { id: assignment.rescueRequestId },
+        relations: ['assignments', 'assignments.team'],
+      });
+
+      if (updatedAssignment) {
+        await this.staffNotificationService.createRescueAssignmentIncidentReportedNotifications(
+          updatedAssignment,
+          incidentNote,
+        );
+        this.realtimeNotificationService.notifyRescueAssignmentIncidentReported(
+          updatedAssignment,
+          incidentNote,
+        );
+      }
+
+      const pendingRescueRequests = await this.rescueRepository.count({
+        where: { status: RescueStatus.NEW },
+      });
+
+      this.realtimeNotificationService.emitStaffMetricsUpdate({
+        pendingRescueRequests,
+      });
+
       return {
-        assignment: await assignmentRepository.findOne({
-          where: { id: assignment.id },
-          relations: ['team', 'rescueRequest'],
-        }),
-        rescueRequest: await rescueRepository.findOne({
-          where: { id: assignment.rescueRequestId },
-          relations: ['assignments', 'assignments.team'],
-        }),
+        assignment: updatedAssignment,
+        rescueRequest: updatedRescueRequest,
         returnedOrder,
       };
     });

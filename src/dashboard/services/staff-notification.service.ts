@@ -84,6 +84,32 @@ export class StaffNotificationService {
     });
   }
 
+  async createRescueAssignmentIncidentReportedNotifications(
+    assignment: RescueAssignment,
+    incidentNote: string,
+  ) {
+    // Reuse RESCUE_ASSIGNMENT_ACCEPTED type for FE compatibility on socket filters.
+    return this.createForRoles({
+      roles: [AccountRole.ADMIN],
+      type: StaffNotificationType.RESCUE_ASSIGNMENT_ACCEPTED,
+      category: StaffNotificationCategory.RESCUE_REQUESTS,
+      title: 'Đội cứu hộ báo sự cố và hủy nhiệm vụ',
+      message: `${assignment.team?.name ?? 'Một đội cứu hộ'} đã báo sự cố tại ${assignment.rescueRequest?.address ?? 'khu vực cứu hộ'}. Cần phân công đội khác.`,
+      severity: StaffNotificationSeverity.WARNING,
+      data: {
+        eventType: 'RESCUE_ASSIGNMENT_INCIDENT_REPORTED',
+        assignmentId: assignment.id,
+        requestId: assignment.rescueRequest?.id,
+        requestStatus: assignment.rescueRequest?.status,
+        address: assignment.rescueRequest?.address,
+        teamId: assignment.teamId,
+        teamName: assignment.team?.name ?? null,
+        incidentNote,
+        incidentReportedAt: assignment.incidentReportedAt?.toISOString() ?? null,
+      },
+    });
+  }
+
   async createPendingDonationCreatedNotifications(
     donation: Donation,
     pendingProductsCount: number,

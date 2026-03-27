@@ -214,6 +214,33 @@ export class RealtimeNotificationService {
     this.emitStaffNotification(payload);
   }
 
+  notifyRescueAssignmentIncidentReported(
+    assignment: RescueAssignment,
+    incidentNote: string,
+  ) {
+    // Keep type as RESCUE_ASSIGNMENT_ACCEPTED so current FE socket filters still receive it.
+    const payload: StaffRealtimePayload = {
+      type: 'RESCUE_ASSIGNMENT_ACCEPTED',
+      title: 'Đội cứu hộ báo sự cố và hủy nhiệm vụ',
+      message: `${assignment.team?.name ?? 'Một đội cứu hộ'} đã báo sự cố tại ${assignment.rescueRequest?.address ?? 'khu vực cứu hộ'}. Cần phân công đội khác.`,
+      severity: 'warning',
+      createdAt: new Date().toISOString(),
+      data: {
+        eventType: 'RESCUE_ASSIGNMENT_INCIDENT_REPORTED',
+        assignmentId: assignment.id,
+        requestId: assignment.rescueRequestId,
+        requestStatus: assignment.rescueRequest?.status,
+        address: assignment.rescueRequest?.address,
+        teamId: assignment.teamId,
+        teamName: assignment.team?.name ?? null,
+        incidentNote,
+        incidentReportedAt: assignment.incidentReportedAt?.toISOString() ?? null,
+      },
+    };
+
+    this.emitStaffNotification(payload);
+  }
+
   notifyTeamRegistrationRequestCreated(request: TeamRegistrationRequest) {
     const payload: StaffRealtimePayload = {
       type: 'TEAM_REGISTRATION_REQUEST_CREATED',
