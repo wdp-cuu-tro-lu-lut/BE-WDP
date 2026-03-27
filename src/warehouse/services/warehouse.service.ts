@@ -12,6 +12,7 @@ import {
   AllocationItem,
   AllocationStatus,
   AssignmentStatus,
+  RescueAssignment,
   Category,
   Donation,
   DonationItem,
@@ -871,25 +872,55 @@ export class WarehouseService {
   }
 
   async listAssignmentSupplyHandoffs(assignmentId: string) {
-    const handoffs = await this.rescueSupplyTeamHandoffRepository.find({
+    const assignment = await this.dataSource.manager.findOne(RescueAssignment, {
+      where: { id: assignmentId },
+      relations: ['team'],
+    });
+
+    if (!assignment) {
+      throw new ResourceNotFoundException('Assignment', assignmentId);
+    }
+
+    const relations = [
+      'items',
+      'items.orderItem',
+      'items.category',
+      'team',
+      'order',
+      'order.rescueRequest',
+      'dispatchedBy',
+      'dispatchedBy.profile',
+      'receivedBy',
+      'receivedBy.profile',
+    ] as const;
+
+    // Primary query: strict by assignmentId (new canonical data)
+    let handoffs = await this.rescueSupplyTeamHandoffRepository.find({
       where: { assignmentId },
-      relations: [
-        'items',
-        'items.orderItem',
-        'items.category',
-        'team',
-        'order',
-        'order.rescueRequest',
-        'dispatchedBy',
-        'dispatchedBy.profile',
-        'receivedBy',
-        'receivedBy.profile',
-      ],
+      relations: [...relations],
       order: {
         dispatchedAt: 'DESC',
         createdAt: 'DESC',
       },
     });
+
+    // Fallback for legacy data: records tied by rescueRequest/order + team,
+    // but assignmentId may be missing/wrong in historical rows.
+    if (handoffs.length === 0) {
+      handoffs = await this.rescueSupplyTeamHandoffRepository.find({
+        where: {
+          teamId: assignment.teamId,
+          order: {
+            rescueRequestId: assignment.rescueRequestId,
+          },
+        },
+        relations: [...relations],
+        order: {
+          dispatchedAt: 'DESC',
+          createdAt: 'DESC',
+        },
+      });
+    }
 
     return {
       data: handoffs.map((handoff) => this.serializeRescueSupplyTeamHandoff(handoff)),
