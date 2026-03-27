@@ -1915,7 +1915,7 @@ export class WarehouseService {
     for (const orderId of impactedOrderIds) {
       const order = await manager.findOne(RescueSupplyOrder, {
         where: { id: orderId },
-        relations: ['items'],
+        relations: ['items', 'rescueRequest', 'rescueRequest.assignments'],
       });
 
       if (!order) {
@@ -1927,9 +1927,22 @@ export class WarehouseService {
       );
 
       if (allReturned) {
-        order.status = RescueSupplyOrderStatus.COMPLETED;
-        order.completedAt = new Date();
-        order.note = `Incident return: ${incidentNote}`;
+        // Check if rescue request still needs this order (has active assignments)
+        const activeAssignments = (order.rescueRequest?.assignments ?? []).filter(
+          (a) => a.status !== AssignmentStatus.CANCELED && a.status !== AssignmentStatus.DECLINED,
+        );
+
+        if (activeAssignments.length > 0) {
+          // Rescue still needs teams — revert order to DISPATCHED so staff can create new handoffs
+          order.status = RescueSupplyOrderStatus.DISPATCHED;
+          order.completedAt = null;
+          order.note = `Incident return — reverted to DISPATCHED (${activeAssignments.length} active team(s)): ${incidentNote}`;
+        } else {
+          // No active teams left — truly complete
+          order.status = RescueSupplyOrderStatus.COMPLETED;
+          order.completedAt = new Date();
+          order.note = `Incident return: ${incidentNote}`;
+        }
         await manager.save(order);
       }
     }
