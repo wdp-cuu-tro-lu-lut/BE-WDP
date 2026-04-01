@@ -124,7 +124,7 @@ export class RescueController {
   @Post()
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(AccountRole.USER)
+  @Roles(AccountRole.USER, AccountRole.RESCUE_TEAM)
   @UseInterceptors(
     FilesInterceptor('images', 10, {
       storage: memoryStorage(),
@@ -145,7 +145,7 @@ export class RescueController {
       limits: { fileSize: 10 * 1024 * 1024 },
     }),
   )
-  @ApiOperation({ summary: 'Create rescue request (USER — đã đăng nhập)' })
+  @ApiOperation({ summary: 'Create rescue request (USER/RESCUE_TEAM — đã đăng nhập)' })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: {

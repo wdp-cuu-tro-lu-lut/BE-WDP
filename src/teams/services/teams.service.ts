@@ -10,6 +10,8 @@ import {
   AssignmentStatus,
   Profile,
   RescueAssignment,
+  RescueSupplyTeamHandoffItem,
+  RescueSupplyTeamHandoffStatus,
   RescueStatus,
   Team,
   TeamEquipment,
@@ -56,6 +58,8 @@ export class TeamsService {
     private assignmentRepository: Repository<RescueAssignment>,
     @InjectRepository(Allocation)
     private allocationRepository: Repository<Allocation>,
+    @InjectRepository(RescueSupplyTeamHandoffItem)
+    private rescueSupplyTeamHandoffItemRepository: Repository<RescueSupplyTeamHandoffItem>,
     @InjectRepository(VehicleType)
     private vehicleTypeRepository: Repository<VehicleType>,
     @InjectRepository(TeamMember)
@@ -264,6 +268,81 @@ export class TeamsService {
   async getMyTeamAllocation(accountId: string, allocationId: string) {
     const { allocation } = await this.getMyTeamAllocationContext(accountId, allocationId);
     return this.serializeTeamAllocation(allocation);
+  }
+
+  async getMyTeamWarehouseSummary(accountId: string) {
+    const context = await this.getTeamAccessContext(accountId);
+    const teamId = context.team.id;
+
+    const [allocationRows, handoffRows] = await Promise.all([
+      this.allocationRepository
+        .createQueryBuilder('allocation')
+        .innerJoin('allocation.items', 'items')
+        .select('items.category', 'category')
+        .addSelect('COALESCE(SUM(items.quantity), 0)', 'quantity')
+        .where('allocation.teamId = :teamId', { teamId })
+        .andWhere('allocation.status = :status', {
+          status: AllocationStatus.DELIVERED,
+        })
+        .groupBy('items.category')
+        .getRawMany<{ category: string | null; quantity: string | number | null }>(),
+      this.rescueSupplyTeamHandoffItemRepository
+        .createQueryBuilder('handoffItem')
+        .innerJoin('handoffItem.handoff', 'handoff')
+        .leftJoin('handoffItem.category', 'category')
+        .select(
+          "COALESCE(NULLIF(TRIM(category.name), ''), handoffItem.categoryId)",
+          'category',
+        )
+        .addSelect(
+          'COALESCE(SUM(handoffItem.quantity - handoffItem.returnedQuantity), 0)',
+          'quantity',
+        )
+        .where('handoff.teamId = :teamId', { teamId })
+        .andWhere('handoff.status = :status', {
+          status: RescueSupplyTeamHandoffStatus.RECEIVED,
+        })
+        .groupBy('category.name')
+        .addGroupBy('handoffItem.categoryId')
+        .having('SUM(handoffItem.quantity - handoffItem.returnedQuantity) > 0')
+        .getRawMany<{ category: string | null; quantity: string | number | null }>(),
+    ]);
+
+    const quantityByCategory = new Map<string, number>();
+    const mergeRows = (rows: Array<{ category: string | null; quantity: string | number | null }>) => {
+      for (const row of rows) {
+        if (!row.category) {
+          continue;
+        }
+
+        const quantity = Number(row.quantity ?? 0);
+        if (quantity <= 0) {
+          continue;
+        }
+
+        quantityByCategory.set(
+          row.category,
+          (quantityByCategory.get(row.category) ?? 0) + quantity,
+        );
+      }
+    };
+
+    mergeRows(allocationRows);
+    mergeRows(handoffRows);
+
+    const breakdownByCategory = Array.from(quantityByCategory.entries())
+      .map(([category, quantity]) => ({ category, quantity }))
+      .sort((a, b) => b.quantity - a.quantity || a.category.localeCompare(b.category));
+
+    const totalQuantity = breakdownByCategory.reduce(
+      (sum, item) => sum + item.quantity,
+      0,
+    );
+
+    return {
+      totalQuantity,
+      breakdownByCategory,
+    };
   }
 
   async receiveMyTeamAllocation(accountId: string, allocationId: string) {

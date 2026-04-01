@@ -64,6 +64,12 @@ export class TeamSelfController {
     return this.teamsService.getMyTeamAllocation(user.id, allocationId);
   }
 
+  @Get('warehouse/summary')
+  @ApiOperation({ summary: 'Get my team warehouse stock summary (delivered allocations + received handoffs net returns)' })
+  async getMyTeamWarehouseSummary(@CurrentUser() user: any) {
+    return this.teamsService.getMyTeamWarehouseSummary(user.id);
+  }
+
   @Post('allocations/:allocationId/receive')
   @ApiOperation({ summary: 'Confirm my team has received allocated items' })
   async receiveMyTeamAllocation(

@@ -385,6 +385,11 @@ export class RescueService {
       where: { status: RescueStatus.NEW },
     });
 
+    await this.staffNotificationService.createRescueRequestCreatedNotifications(
+      rescue,
+      pendingRescueRequests,
+    );
+
     this.realtimeNotificationService.notifyUrgentRescueRequestCreated({
       ...rescue,
     } as RescueRequest);

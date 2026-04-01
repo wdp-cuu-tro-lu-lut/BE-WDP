@@ -6,6 +6,8 @@ import {
   AccountRole,
   Donation,
   ReplenishmentRequest,
+  RescuePriority,
+  RescueRequest,
   RescueAssignment,
   StaffNotification,
   StaffNotificationCategory,
@@ -80,6 +82,42 @@ export class StaffNotificationService {
         teamId: assignment.teamId,
         teamName: assignment.team?.name ?? null,
         respondedAt: assignment.respondedAt?.toISOString() ?? null,
+      },
+    });
+  }
+
+  async createRescueRequestCreatedNotifications(
+    rescue: RescueRequest,
+    pendingRescueRequests: number,
+  ) {
+    const severity =
+      rescue.priority === RescuePriority.CRITICAL
+        ? StaffNotificationSeverity.CRITICAL
+        : rescue.priority === RescuePriority.HIGH
+          ? StaffNotificationSeverity.WARNING
+          : StaffNotificationSeverity.INFO;
+
+    const title =
+      rescue.priority === RescuePriority.CRITICAL
+        ? 'Có yêu cầu cứu hộ khẩn cấp'
+        : rescue.priority === RescuePriority.HIGH
+          ? 'Có yêu cầu cứu hộ mức cao'
+          : 'Có đơn cứu hộ mới';
+
+    return this.createForRoles({
+      roles: [AccountRole.ADMIN],
+      type: StaffNotificationType.RESCUE_REQUEST_CREATED,
+      category: StaffNotificationCategory.RESCUE_REQUESTS,
+      title,
+      message: `Yêu cầu tại ${rescue.address} có mức độ ${rescue.priority}.`,
+      severity,
+      data: {
+        requestId: rescue.id,
+        priority: rescue.priority,
+        address: rescue.address,
+        estimatedPeople: rescue.estimatedPeople,
+        status: rescue.status,
+        pendingRescueRequests,
       },
     });
   }

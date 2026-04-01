@@ -31,8 +31,8 @@ export class DonationsController {
   @Post()
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(AccountRole.USER)
-  @ApiOperation({ summary: 'Create donation (USER)' })
+  @Roles(AccountRole.USER, AccountRole.RESCUE_TEAM)
+  @ApiOperation({ summary: 'Create donation (USER/RESCUE_TEAM)' })
   async createDonation(
     @Param('eventId', ParseUUIDPipe) eventId: string,
     @CurrentUser() user: any,
