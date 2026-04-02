@@ -52,13 +52,41 @@ export class DonationsController {
   @Get('mine')
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Get my donations (USER)' })
+  @ApiOperation({ summary: 'Get my donations for this event (USER)' })
+  async getMyDonations(
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @CurrentUser() user: any,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
+    return this.donationsService.listMyDonations(user.id, page, limit);
+  }
+}
+
+// Global donations endpoint (not scoped to event)
+@Controller('donations')
+@ApiTags('Donations')
+export class GlobalDonationsController {
+  constructor(private readonly donationsService: DonationsService) {}
+
+  @Get('mine')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Get all my donations across all events' })
   async getMyDonations(
     @CurrentUser() user: any,
     @Query('page') page?: number,
     @Query('limit') limit?: number,
   ) {
     return this.donationsService.listMyDonations(user.id, page, limit);
+  }
+
+  @Get(':donationId')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Get donation by ID' })
+  async getDonation(@Param('donationId', ParseUUIDPipe) id: string) {
+    return this.donationsService.getDonation(id);
   }
 }
 

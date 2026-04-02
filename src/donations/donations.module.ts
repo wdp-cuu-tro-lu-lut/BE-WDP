@@ -4,6 +4,7 @@ import { Donation, DonationItem, Category } from '@/database/entities';
 import { DonationsService } from '@/donations/services';
 import {
   DonationsController,
+  GlobalDonationsController,
   AdminDonationsController,
 } from '@/donations/controllers';
 import { CommonModule } from '@/common/common.module';
@@ -16,7 +17,7 @@ import { DashboardModule } from '@/dashboard/dashboard.module';
     DashboardModule,
   ],
   providers: [DonationsService],
-  controllers: [DonationsController, AdminDonationsController],
+  controllers: [DonationsController, GlobalDonationsController, AdminDonationsController],
   exports: [DonationsService],
 })
 export class DonationsModule {}

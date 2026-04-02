@@ -114,7 +114,9 @@ export class DonationsService {
       .leftJoinAndSelect('items.category', 'category')
       .leftJoinAndSelect('donation.creator', 'creator')
       .leftJoinAndSelect('creator.profile', 'creatorProfile')
-      .where('donation.creatorId = :creatorId', { creatorId });
+      .leftJoinAndSelect('donation.event', 'event')
+      .where('donation.creatorId = :creatorId', { creatorId })
+      .orderBy('donation.createdAt', 'DESC');
 
     const total = await qb.getCount();
     const skip = (page - 1) * limit;
